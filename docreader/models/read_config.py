@@ -3,10 +3,9 @@ from dataclasses import dataclass
 
 @dataclass
 class ChunkingConfig:
-    """Legacy config kept for backward compatibility.
+    """为向后兼容保留的旧配置。
 
-    After the lightweight refactoring, chunking is done in Go.
-    This class is only kept so existing parser constructors don't break.
+    轻量化重构后，分块由 Go 端完成；保留此类以兼容已有解析器构造函数。
     """
 
     chunk_size: int = 512

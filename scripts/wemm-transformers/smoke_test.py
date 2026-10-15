@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check a running WeMM service with actual text and image inference."""
+"""通过真实文本和图片推理检查运行中的 WeMM 服务。"""
 import argparse
 import base64
 import io

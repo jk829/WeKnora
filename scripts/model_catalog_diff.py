@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""Compare the built-in vendor catalogs against models.dev and print a diff.
+"""比较内置厂商模型目录与 models.dev，输出差异。
 
-Development-time helper, never run at runtime: it reports numeric facts
-(context window, max output, cost, new/retired ids) so a maintainer can update
-internal/models/catalog/data/seed.json by hand. Behavioural facts (compat,
-thinking format) are intentionally out of scope — models.dev does not carry
-them and they must come from vendor documentation.
+仅供开发时使用，不在运行时执行。报告上下文窗口、最大输出、费用及新增/退役 ID，
+供维护者手工更新 internal/models/catalog/data/seed.json。兼容性、思考格式等
+行为信息不在范围内，需以厂商文档为依据，models.dev 不提供这些信息。
 
-Usage:
-    scripts/model_catalog_diff.py                # fetch https://models.dev/api.json
-    scripts/model_catalog_diff.py --api api.json # use a downloaded copy
+用法：
+    scripts/model_catalog_diff.py
+    scripts/model_catalog_diff.py --api api.json
     scripts/model_catalog_diff.py --vendor deepseek
-    scripts/model_catalog_diff.py --exit-code      # non-zero when anything differs
+    scripts/model_catalog_diff.py --exit-code
 
-Findings are advisory: `+` is a model upstream has and we do not, `~` is a
-numeric difference, `?` is an entry upstream does not list (often correct —
-vendor-specific aliases and China-only ids are missing from models.dev).
+默认抓取 https://models.dev/api.json；--api 使用本地副本；
+--exit-code 在存在差异时返回非零退出码。结果仅作提示：+ 表示上游新增模型，
+~ 表示数值差异，? 表示上游未列出的条目，常见于厂商别名或中国区专用 ID。
 """
 
 import argparse
@@ -29,7 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CATALOG = ROOT / "internal/models/catalog/data/models.generated.json"
 
-# WeKnora vendor id -> models.dev provider id.
+# WeKnora 厂商 ID 到 models.dev 提供商 ID 的映射。
 PROVIDER_MAP = json.loads((ROOT / "scripts/model-catalog/sources.json").read_text())["models_dev"]["provider_map"]
 
 
@@ -37,11 +35,10 @@ MODELS_DEV_URL = "https://models.dev/api.json"
 
 
 def load_api(path):
-    """Load the models.dev catalog from a file, or fetch it once.
+    """从文件加载 models.dev 目录，或执行一次网络抓取。
 
-    models.dev rejects the default urllib user agent, so send a real one.
-    When the network is unavailable (CI, offline dev box), download the file
-    by hand and pass --api, or set MODELS_DEV_API to its path.
+    models.dev 拒绝默认 urllib 用户代理，因此显式设置代理标识。
+    离线或 CI 环境可手动下载，通过 --api 或 MODELS_DEV_API 指定路径。
     """
     path = path or os.environ.get("MODELS_DEV_API")
     if path:
@@ -71,7 +68,7 @@ def compare(vendor, upstream, ours):
     for mid, spec in sorted(up_models.items()):
         mods = spec.get("modalities", {})
         if "text" not in mods.get("output", ["text"]):
-            continue  # image / audio generation, out of scope
+            continue  # 图片及音频生成模型不在比较范围内。
         entry = ours.get(mid)
         limit = spec.get("limit", {})
         cost = spec.get("cost", {})

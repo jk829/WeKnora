@@ -9,11 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class ImageParser(BaseParser):
-    """Parser for standalone image files.
+    """独立图片文件解析器。
 
-    Returns the image as a markdown reference with the raw image data
-    in Document.images so that the Go-side ImageResolver (or main.py's
-    _resolve_images) can handle storage upload.
+    返回 Markdown 图片引用，将原始图片数据放入 Document.images，
+    由 Go 端 ImageResolver 或 main.py 的 _resolve_images 处理存储上传。
     """
 
     def parse_into_text(self, content: bytes) -> Document:

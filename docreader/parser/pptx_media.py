@@ -1,4 +1,4 @@
-"""Extract and rasterize images embedded in PPTX (e.g. WMF) when MarkItDown cannot inline them."""
+"""MarkItDown 无法内联图片时，提取并栅格化 PPTX 内嵌图片，如 WMF。"""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def rasterize_media_bytes(name: str, data: bytes) -> bytes | None:
 
 
 def list_pptx_media(pptx_bytes: bytes) -> List[Tuple[str, bytes]]:
-    """Return (zip path, raw bytes) for each file under ppt/media/, in archive order."""
+    """按归档顺序返回 ppt/media/ 下各文件的 (ZIP 路径, 原始字节)。"""
     items: List[Tuple[str, bytes]] = []
     with zipfile.ZipFile(io.BytesIO(pptx_bytes)) as archive:
         for name in archive.namelist():
@@ -105,7 +105,7 @@ def list_pptx_media(pptx_bytes: bytes) -> List[Tuple[str, bytes]]:
 
 
 def extract_pptx_media_rasterized(pptx_bytes: bytes) -> List[bytes]:
-    """Rasterize all ppt/media assets to PNG bytes, skipping failures."""
+    """将 ppt/media 资源栅格化为 PNG 字节，跳过处理失败的资源。"""
     rasterized: List[bytes] = []
     for path, raw in list_pptx_media(pptx_bytes):
         png = rasterize_media_bytes(os.path.basename(path), raw)
@@ -128,7 +128,7 @@ def _is_unresolved_image_ref(url: str) -> bool:
 
 
 def _picture_sources(pptx_bytes: bytes) -> dict[str, deque[tuple[str, bytes] | None]]:
-    """Resolve MarkItDown picture placeholders in slide/shape order."""
+    """按幻灯片及形状顺序解析 MarkItDown 图片占位符。"""
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     from pptx.exc import PythonPptxError
@@ -187,7 +187,7 @@ def _picture_sources(pptx_bytes: bytes) -> dict[str, deque[tuple[str, bytes] | N
 def attach_pptx_media_to_markdown(
     markdown: str, pptx_bytes: bytes
 ) -> Tuple[str, Dict[str, str]]:
-    """Attach the media referenced by MarkItDown's fallback picture placeholders."""
+    """为 MarkItDown 回退图片占位符补充对应媒体资源。"""
     sources = _picture_sources(pptx_bytes)
     if not sources:
         return markdown, {}

@@ -1,10 +1,10 @@
-"""Compose the README feature spotlights: two real screenshots framed as app windows.
+"""生成 README 功能展示图，将两张真实截图组合为应用窗口。
 
-Writes spotlight-{name}-{light,dark}.webp into the directory above this script.
-Screenshots come from website-docs/public/screenshots (the ones the product docs and homepage use)
-and, for Q&A, docs/images.
+在脚本上级目录输出 spotlight-{name}-{light,dark}.webp。
+截图来自产品文档和首页使用的 website-docs/public/screenshots，
+问答截图另取自 docs/images。
 
-    python3 docs/images/readme/src/spotlights.py
+用法：python3 docs/images/readme/src/spotlights.py
 """
 import os
 from PIL import Image, ImageDraw, ImageFilter
@@ -14,9 +14,9 @@ OUT = os.path.dirname(HERE)
 ROOT = os.path.abspath(os.path.join(OUT, "..", "..", ".."))
 SHOTS = os.path.join(ROOT, "website-docs", "public", "screenshots")
 
-# (main shot, side shot, side crop as fractions of width/height, side window width, side corner)
-# The side window sits in the bottom corner where it hides the least of the main shot;
-# the browser shot keeps its task preview in the bottom right, so its side window goes left.
+# 配置项：主截图、侧截图、按宽高比例裁剪的区域、侧窗口宽度及摆放角落。
+# 侧窗口放在对主截图遮挡最少的底部角落；
+# 浏览器截图的任务预览位于右下方，因此侧窗口放在左侧。
 SETS = {
     "qa": ("../../../docs/images/qa.png", "../../../docs/images/agent-qa.png", (0.30, 0.0, 0.84, 0.70), 640, "right"),
     "toolbox": ("mcp-services.png", "toolbox.png", (0.11, 0.0, 0.762, 0.32), 760, "left"),
@@ -30,12 +30,12 @@ THEMES = {
     "dark": dict(bar=(22, 31, 48), border=(190, 208, 232, 46), dots=[(104, 86, 56)] * 3, shadow=(0, 0, 0, 150)),
 }
 W, H = 1600, 900
-SCALE = 2  # layout is in 1600x900 units; the image is written at 2x so it stays sharp when opened
+SCALE = 2  # 按 1600×900 单位布局，以两倍尺寸输出，保证打开时清晰。
 BAR = 30
 
 
 def window(path, width, theme, crop=None):
-    """Return an RGBA window: a title bar with three dots above the (optionally cropped) screenshot."""
+    """返回 RGBA 窗口图像，在可选裁剪的截图上方添加带三个圆点的标题栏。"""
     t = THEMES[theme]
     shot = Image.open(path).convert("RGB")
     if crop:

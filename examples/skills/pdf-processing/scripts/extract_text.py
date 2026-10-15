@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""
-Extract text from PDF files.
-Usage: python extract_text.py <pdf_file> [--page N]
+"""提取 PDF 文件文本。
+
+用法：python extract_text.py <pdf_file> [--page N]
 """
 
 import sys
 
 def extract_text(pdf_path, page_num=None):
-    """Extract text from a PDF file."""
-    # This is a mock implementation for testing
-    # In production, would use pdfplumber or pypdf
+    """从 PDF 文件中提取文本。"""
+    # 这是用于测试的模拟实现。
+    # 生产环境应使用 pdfplumber 或 pypdf。
     
     print(f"Extracting text from: {pdf_path}")
     
@@ -20,7 +20,7 @@ def extract_text(pdf_path, page_num=None):
     
     print("=" * 50)
     
-    # Mock extracted text
+    # 模拟提取的文本。
     mock_text = """
     Sample PDF Document
     

@@ -1,9 +1,7 @@
-"""
-Excel Parser Module
+"""Excel 解析模块。
 
-This module provides functionality to parse Excel files (.xlsx, .xls) into
-structured Document objects with text content and chunks. It supports multiple
-sheets and handles various Excel formats using pandas.
+使用 pandas 读取 .xlsx、.xls 等格式，支持多个工作表，
+将行数据转换为结构化文本和文档分块。
 """
 import logging
 import re
@@ -40,26 +38,19 @@ _IMAGE_FUNC_RE = re.compile(
 
 
 def _is_image_function(value: object) -> bool:
-    """Return True if *value* looks like an embedded-image function string."""
+    """判断值是否形似内嵌图片函数的字符串。"""
     if not isinstance(value, str):
         return False
     return _IMAGE_FUNC_RE.match(value) is not None
 
 
 class ExcelParser(BaseParser):
-    """Parser for Excel files (.xlsx, .xls).
-    
-    This parser extracts text content from Excel files by processing all sheets
-    and converting each row into a structured text format. Each row becomes a
-    separate chunk with key-value pairs.
-    
-    Features:
-        - Supports multiple sheets in a single Excel file
-        - Automatically removes completely empty rows
-        - Converts each row to "column: value" format
-        - Creates individual chunks for each row for better granularity
-        
-    Example:
+    """Excel（.xlsx、.xls）文件解析器。
+
+    遍历所有工作表，跳过全空行，并将每行转换为“列名: 值”形式的文本。
+    每行生成一个分块，以保持细粒度检索。
+
+    示例：
         >>> parser = ExcelParser()
         >>> with open("data.xlsx", "rb") as f:
         ...     content = f.read()
@@ -80,20 +71,17 @@ class ExcelParser(BaseParser):
         self.xlsx_first_row_as_header = _parse_bool(xlsx_first_row_as_header)
     
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse Excel file bytes into a Document object.
-        
-        Args:
-            content: Raw bytes of the Excel file
-            
-        Returns:
-            Document: Parsed document containing:
-                - content: Full text with all rows from all sheets
-                - chunks: List of Chunk objects, one per row
-                
-        Note:
-            - Empty rows (all NaN values) are automatically skipped
-            - Each row is formatted as: "col1: val1,col2: val2,..."
-            - Chunks maintain sequential ordering across all sheets
+        """将 Excel 字节内容解析为 Document。
+
+        参数：
+            content: Excel 文件的原始字节。
+
+        返回：
+            Document，content 包含所有工作表的行文本，chunks 每行对应一个分块。
+
+        说明：
+            全为 NaN 的空行自动跳过；行格式为“col1: val1,col2: val2,...”；
+            分块序号在不同工作表之间连续递增。
         """
         chunks: List[Chunk] = []
         text: List[str] = []
@@ -165,7 +153,7 @@ def _read_sheet_dataframe(
     sheet_name: str,
     xlsx_first_row_as_header: bool = False,
 ) -> pd.DataFrame:
-    """Read a worksheet into a DataFrame with stable column labels."""
+    """将工作表读取为 DataFrame，并保持列标签稳定。"""
     from openpyxl.utils import get_column_letter
 
     # Keep row 1 as data by default for both XLSX and legacy XLS. Users can
@@ -181,7 +169,7 @@ def _read_sheet_dataframe(
 
 
 def _stable_header_labels(values: List[object]) -> List[str]:
-    """Build non-empty, unique labels from an explicitly selected header row."""
+    """从显式指定的表头行构建非空且唯一的列名。"""
     from openpyxl.utils import get_column_letter
 
     labels: List[str] = []
@@ -226,7 +214,7 @@ def _prepare_xlsx_bytes(data: bytes) -> bytes:
 
 
 def _open_excel_file(content: bytes, file_type: str | None = None) -> pd.ExcelFile:
-    """Open an Excel workbook with explicit engine selection and fallbacks."""
+    """显式选择读取引擎，并在失败时使用回退方案打开工作簿。"""
     data = content
     converted_via_soffice = False
 

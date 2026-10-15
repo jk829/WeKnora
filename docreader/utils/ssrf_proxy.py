@@ -1,8 +1,8 @@
-"""Per-browser forward proxy with DNS pinning at the final connection.
+"""为每个浏览器提供转发代理，在最终连接时固定已校验的 DNS 地址。
 
-Unlike Playwright route hooks, a proxy also sees redirected connections. HTTPS
-stays end-to-end encrypted; CONNECT only opens a socket to a checked numeric IP.
-An operator-configured HTTP(S) upstream proxy receives that numeric IP too.
+代理可检查重定向后的连接，而 Playwright 路由钩子无法覆盖所有场景。
+HTTPS 保持端到端加密；CONNECT 只连接已校验的数字 IP。
+管理员配置的 HTTP(S) 上游代理也接收该数字 IP。
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ async def checked_address(url: str) -> tuple[str, int]:
         raise ValueError(reason)
     host = parsed.hostname or ""
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    # Resolve once for the socket, recheck all answers, then dial a numeric IP.
+    # 为本次连接解析一次 DNS，重新校验全部结果，再连接数字 IP。
     ips, error = await asyncio.to_thread(_resolve_host_ips, host)
     if error or not ips:
         raise ValueError("target DNS lookup failed")
@@ -109,8 +109,8 @@ class SSRFProxy:
                 writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
                 await writer.drain()
             else:
-                # One origin per connection. Never relay proxy credentials, an
-                # attacker-selected Host, or a second proxy-form request.
+                # 每个连接只允许一个源站；不转发代理凭据、
+                # 攻击者指定的 Host 或第二个代理格式请求。
                 path = parsed.path or "/"
                 if parsed.query:
                     path += "?" + parsed.query

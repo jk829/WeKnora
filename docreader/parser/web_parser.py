@@ -21,10 +21,9 @@ logger = logging.getLogger(__name__)
 
 
 class WebParseError(RuntimeError):
-    """Raised when a URL cannot be scraped or has no extractable content.
+    """URL 抓取失败或没有可提取内容时抛出的异常。
 
-    This must propagate as a parse failure. Returning the error string as
-    document body would index it as knowledge.
+    必须作为解析失败向上传播；若将错误字符串作为正文返回，会被错误地索引为知识。
     """
 
 
@@ -70,7 +69,7 @@ class _ScrapeResult:
 
 
 def extract_markdown_from_html(html: str) -> Optional[str]:
-    """Run trafilatura on HTML; return markdown or None if nothing extracted."""
+    """使用 trafilatura 处理 HTML，返回 Markdown；无可提取内容时返回 None。"""
     if not html or not html.strip():
         return None
     md_text = extract(
@@ -87,7 +86,7 @@ def extract_markdown_from_html(html: str) -> Optional[str]:
 
 
 def build_visible_text_fallback(visible_text: str, page_title: str = "") -> Optional[str]:
-    """Build markdown from Playwright-visible text when trafilatura finds no article body."""
+    """trafilatura 未找到文章正文时，从 Playwright 可见文本构建 Markdown。"""
     text = (visible_text or "").strip()
     if len(text) < _MIN_FALLBACK_TEXT_LEN:
         return None
@@ -98,7 +97,7 @@ def build_visible_text_fallback(visible_text: str, page_title: str = "") -> Opti
 
 
 async def wait_for_rendered_content(page: Page) -> None:
-    """Wait for SPA/JS pages beyond the initial HTML shell."""
+    """等待 SPA/JavaScript 页面加载，越过初始 HTML 空壳阶段。"""
     try:
         await page.wait_for_load_state("networkidle", timeout=_NETWORK_IDLE_TIMEOUT_MS)
         logger.info("Network idle after navigation")
@@ -122,7 +121,7 @@ async def wait_for_rendered_content(page: Page) -> None:
 
 
 async def read_visible_text(page: Page) -> str:
-    """Prefer #app/main innerText, then fall back to body."""
+    """优先读取 #app/main 的 innerText，再回退到 body。"""
     return await page.evaluate(
         """() => {
             const root = document.querySelector('#app')
@@ -135,7 +134,7 @@ async def read_visible_text(page: Page) -> str:
 
 
 async def install_ssrf_route_guard(page: Page) -> None:
-    """Reject initial URLs early; SSRFProxy enforces every actual connection."""
+    """尽早拒绝不安全的初始 URL；SSRFProxy 会校验每次实际连接。"""
 
     async def handle_route(route) -> None:
         safe, reason = is_ssrf_safe_url(route.request.url)
@@ -151,19 +150,18 @@ async def install_ssrf_route_guard(page: Page) -> None:
 
 
 class StdWebParser(BaseParser):
-    """Standard web page parser using Playwright and Trafilatura.
+    """基于 Playwright 和 Trafilatura 的标准网页解析器。
 
-    This parser scrapes web pages using Playwright's WebKit browser and extracts
-    clean content using Trafilatura library. It supports proxy configuration and
-    converts HTML content to markdown format.
+    使用 Playwright 的 WebKit 浏览器抓取网页，再通过 Trafilatura 提取干净正文，
+    支持代理配置，并将 HTML 转换为 Markdown。
     """
 
     def __init__(self, title: str, **kwargs):
-        """Initialize the web parser.
+        """初始化网页解析器。
 
-        Args:
-            title: Title of the web page to be used as file name
-            **kwargs: Additional arguments passed to BaseParser
+        参数：
+            title: 用作文件名的网页标题。
+            **kwargs: 传递给 BaseParser 的其他参数。
         """
         self.title = title
         # Get proxy configuration from config if available
@@ -172,14 +170,13 @@ class StdWebParser(BaseParser):
         logger.info(f"Initialized WebParser with title: {title}")
 
     async def scrape(self, url: str) -> _ScrapeResult:
-        """Scrape web page content using Playwright.
+        """使用 Playwright 抓取网页。
 
-        Args:
-            url: The URL of the web page to scrape
+        参数：
+            url: 目标网页 URL。
 
-        Returns:
-            HTML, visible text, and document title. On hard failure the
-            content fields are empty and ``error`` explains why.
+        返回：
+            HTML、可见文本和文档标题；严重失败时内容字段为空，由 error 说明原因。
         """
         logger.info(f"Starting web page scraping for URL: {url}")
         safe, reason = is_ssrf_safe_url(url)
@@ -243,18 +240,17 @@ class StdWebParser(BaseParser):
             )
 
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse web page content into a Document object.
+        """将网页内容解析为 Document。
 
-        Args:
-            content: URL encoded as bytes
+        参数：
+            content: 编码为字节的 URL。
 
-        Returns:
-            Document object containing the parsed markdown content
+        返回：
+            包含 Markdown 正文的 Document。
 
-        Raises:
-            WebParseError: If scraping fails or the page has no extractable
-                content. Callers must surface this as a parse failure rather
-                than indexing the error string as document body.
+        异常：
+            WebParseError: 抓取失败或页面无可提取内容。调用方须报告解析失败，
+                不得将错误字符串作为正文索引。
         """
         url = endecode.decode_bytes(content)
 
@@ -306,11 +302,10 @@ class StdWebParser(BaseParser):
 
 
 class WebParser(PipelineParser):
-    """Web parser using pipeline pattern.
+    """基于流水线的网页解析器。
 
-    This parser chains StdWebParser (for web scraping and HTML to markdown conversion)
-    with MarkdownParser (for markdown processing). The pipeline processes content
-    sequentially through both parsers.
+    先由 StdWebParser 抓取网页并将 HTML 转换为 Markdown，
+    再交由 MarkdownParser 继续处理，两阶段顺序执行。
     """
 
     # Parser classes to be executed in sequence

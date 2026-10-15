@@ -18,30 +18,30 @@ logger = logging.getLogger(__name__)
 
 
 class SandboxExecutor:
-    """Sandbox executor for running commands with proxy configuration"""
+    """支持代理配置的命令执行沙箱。"""
 
     def __init__(self, proxy: Optional[str] = None, default_timeout: int = 60):
-        """Initialize sandbox executor with configuration
+        """初始化沙箱执行器。
 
-        Args:
-            proxy: Proxy URL to use for network access. If None, will use WEB_PROXY environment variable
-            default_timeout: Default timeout in seconds for command execution
+        参数：
+            proxy: 网络代理 URL；为 None 时读取 WEB_PROXY 环境变量。
+            default_timeout: 命令执行的默认超时秒数。
         """
-        # Get proxy from parameter, environment variable, or use default blocking proxy
-        # Use 'or None' to convert empty string to None, then apply default value
+        # 优先使用参数中的代理，其次读取环境变量，最后使用默认阻断代理。
+        # 用 or None 将空字符串转为 None，再应用默认值。
         self.proxy = proxy or CONFIG.external_https_proxy or "http://128.0.0.1:1"
         self.default_timeout = default_timeout
 
     def execute_in_sandbox(self, cmd: List[str]) -> tuple:
-        """Execute command in sandbox with proxy configuration
+        """在配置了代理的沙箱中执行命令。
 
-        Args:
-            cmd: Command to execute
+        参数：
+            cmd: 待执行的命令。
 
-        Returns:
-            Tuple of (stdout, stderr, returncode)
+        返回：
+            (stdout, stderr, returncode) 元组。
         """
-        # Try different sandbox methods in order of preference
+        # 按优先级尝试不同的沙箱执行方式。
         sandbox_methods = [
             self._execute_with_proxy,
         ]
@@ -56,15 +56,12 @@ class SandboxExecutor:
         raise RuntimeError("All sandbox methods failed")
 
     def _execute_with_proxy(self, cmd: List[str]) -> tuple:
-        """Execute command with proxy configuration
+        """使用代理配置执行命令，返回 (stdout, stderr, returncode)。
 
-        Args:
-            cmd: Command to execute
-
-        Returns:
-            Tuple of (stdout, stderr, returncode)
+        参数：
+            cmd: 待执行的命令。
         """
-        # Set up environment with proxy configuration
+        # 设置包含代理配置的执行环境。
         env = os.environ.copy()
         if self.proxy:
             env["http_proxy"] = self.proxy
@@ -82,22 +79,22 @@ class SandboxExecutor:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
-            # On POSIX, start a fresh group so a timed-out command can be
-            # terminated together with children it spawned (e.g. soffice.bin).
+            # 在 POSIX 系统上创建独立进程组，使超时命令及其
+            # 派生子进程（如 soffice.bin）可以一并终止。
             start_new_session=is_posix,
         )
-        # On POSIX start_new_session makes the direct child the group leader, so
-        # retain this ID even if the direct child exits before cleanup starts.
+        # POSIX 的 start_new_session 会让直接子进程成为组长，
+        # 即使它在清理前退出，也要保留进程组 ID。
         process_group_id = process.pid if is_posix else None
 
         try:
             stdout, stderr = process.communicate(timeout=self.default_timeout)
             return stdout, stderr, process.returncode
         except subprocess.TimeoutExpired:
-            # Terminate the POSIX process group (or the direct child elsewhere),
-            # then reap with a bounded wait. Do not drain pipes here:
-            # communicate() waits for EOF and can hang if a descendant left
-            # the group (setsid) or otherwise kept a PIPE writer open.
+            # 终止 POSIX 进程组（其他平台终止直接子进程），
+            # 并在有限时间内回收进程。此处不读取管道：
+            # communicate() 会等待 EOF；若后代进程脱离进程组（setsid）
+            # 或仍持有管道写端，等待可能永久阻塞。
             try:
                 self._kill_timed_out_command(process, process_group_id)
             finally:
@@ -126,8 +123,8 @@ class SandboxExecutor:
         remaining_grace_period = grace_deadline - time.monotonic()
         if remaining_grace_period > 0:
             time.sleep(remaining_grace_period)
-        # The direct child can exit after SIGTERM while a descendant
-        # ignores it. Always finish the grace period with SIGKILL.
+        # 直接子进程可能响应 SIGTERM 退出，但后代进程仍忽略该信号。
+        # 因此宽限期结束后始终发送 SIGKILL。
         self._signal_process_group(process_group_id, signal.SIGKILL)
 
     @staticmethod
@@ -168,10 +165,10 @@ logger = logging.getLogger(__name__)
 
 
 class DocParser(Docx2Parser):
-    """DOC document parser"""
+    """DOC 文档解析器。"""
 
     def __init__(self, *args, **kwargs):
-        """Initialize DOC parser with sandbox executor"""
+        """使用沙箱执行器初始化 DOC 解析器。"""
         super().__init__(*args, **kwargs)
         self.sandbox_executor = SandboxExecutor()
 
@@ -179,17 +176,17 @@ class DocParser(Docx2Parser):
         logger.info(f"Parsing DOC document, content size: {len(content)} bytes")
 
         handle_chain = [
-            # 1. Try to convert to docx format to extract images
+            # 1. 优先转为 DOCX，以便同时提取图片。
             self._parse_with_docx,
-            # 2. If image extraction is not needed or conversion failed,
-            # try using antiword to extract text
+            # 2. 无需提取图片或转换失败时，
+            # 尝试使用 antiword 提取文本。
             self._parse_with_antiword,
-            # 3. If antiword extraction fails, use textract
-            # NOTE: _parse_with_textract is disabled due to SSRF vulnerability
+            # 3. antiword 提取失败时原计划使用 textract。
+            # 注意：因存在 SSRF 漏洞，_parse_with_textract 已禁用。
             # self._parse_with_textract,
         ]
 
-        # Save byte content as a temporary file
+        # 将字节内容保存为临时文件。
         with TempFileContext(content, ".doc") as temp_file_path:
             for handle in handle_chain:
                 try:
@@ -209,7 +206,7 @@ class DocParser(Docx2Parser):
             raise RuntimeError("Failed to convert DOC to DOCX")
 
         logger.info("Successfully converted DOC to DOCX, using DocxParser")
-        # Use existing DocxParser to parse the converted docx
+        # 使用已有 DocxParser 解析转换后的 DOCX。
         document = super(Docx2Parser, self).parse_into_text(docx_content)
         logger.info(f"Extracted {len(document.content)} characters using DocxParser")
         return document
@@ -217,12 +214,12 @@ class DocParser(Docx2Parser):
     def _parse_with_antiword(self, temp_file_path: str) -> Document:
         logger.info("Attempting to parse DOC file with antiword")
 
-        # Check if antiword is installed
+        # 检查是否安装 antiword。
         antiword_path = self._try_find_antiword()
         if not antiword_path:
             raise RuntimeError("antiword not found in PATH")
 
-        # Use antiword to extract text directly in sandbox
+        # 在沙箱中使用 antiword 直接提取文本。
         cmd = [antiword_path, temp_file_path]
         logger.info("Executing antiword in sandbox with proxy configuration")
 
@@ -243,34 +240,32 @@ class DocParser(Docx2Parser):
         return Document(content=str(text))
 
     def _try_convert_doc_to_docx(self, doc_path: str) -> Optional[bytes]:
-        """Convert DOC file to DOCX format
+        """通过 LibreOffice/OpenOffice 将 DOC 转为 DOCX。
 
-        Uses LibreOffice/OpenOffice for conversion
+        参数：
+            doc_path: DOC 文件路径。
 
-        Args:
-            doc_path: DOC file path
-
-        Returns:
-            Byte stream of DOCX file content, or None if conversion fails
+        返回：
+            DOCX 文件字节；转换失败时返回 None。
         """
         logger.info(f"Converting DOC to DOCX: {doc_path}")
 
-        # Check if LibreOffice or OpenOffice is installed
+        # 检查是否安装 LibreOffice 或 OpenOffice。
         soffice_path = self._try_find_soffice()
         if not soffice_path:
             return None
 
-        # Execute conversion command
+        # 执行格式转换命令。
         logger.info(f"Using {soffice_path} to convert DOC to DOCX")
 
-        # LibreOffice shares a single user profile by default, so concurrent
-        # `soffice` invocations contend for the same profile lock and the loser
-        # silently fails to convert. Give each attempt a dedicated profile dir
-        # and retry a few times so concurrent requests don't fall back to the
-        # lower-fidelity antiword path.
+        # LibreOffice 默认共享一个用户配置目录，并发调用
+        # soffice 会竞争同一配置锁，竞争失败的一方
+        # 可能静默转换失败。为每次尝试创建独立配置目录，
+        # 并进行有限次数重试，避免并发请求退回到
+        # 保真度较低的 antiword 解析路径。
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
-            # Create a temporary directory to store the converted file
+            # 创建临时目录以保存转换结果。
             with TempDirContext() as temp_dir, TempDirContext() as profile_dir:
                 user_installation = Path(profile_dir).as_uri()
                 cmd = [
@@ -288,7 +283,7 @@ class DocParser(Docx2Parser):
                     f"{' '.join(cmd)}"
                 )
 
-                # Execute in sandbox with proxy configuration
+                # 在配置了代理的沙箱中执行。
                 stdout, stderr, returncode = self.sandbox_executor.execute_in_sandbox(
                     cmd
                 )
@@ -303,7 +298,7 @@ class DocParser(Docx2Parser):
                         continue
                     return None
 
-                # Find the converted file
+                # 查找转换后的文件。
                 docx_file = [
                     file for file in os.listdir(temp_dir) if file.endswith(".docx")
                 ]
@@ -314,7 +309,7 @@ class DocParser(Docx2Parser):
                     converted_file = os.path.join(temp_dir, file)
                     logger.info(f"Found converted file: {converted_file}")
 
-                    # Read the converted file content
+                    # 读取转换后的文件内容。
                     with open(converted_file, "rb") as f:
                         docx_content = f.read()
                         logger.info(
@@ -322,7 +317,7 @@ class DocParser(Docx2Parser):
                         )
                         return docx_content
 
-                # Conversion reported success but produced no docx; retry.
+                # 命令报告成功但未生成 DOCX，继续重试。
                 logger.warning(
                     f"No DOCX produced despite success (attempt {attempt}/"
                     f"{max_attempts})"
@@ -337,27 +332,29 @@ class DocParser(Docx2Parser):
         possible_path: List[str] = [],
         environment_variable: List[str] = [],
     ) -> Optional[str]:
-        """Find executable path
-        Args:
-            executable_name: Executable name
-            possible_path: List of possible paths
-            environment_variable: List of environment variables to check
-            Returns:
-                Executable path, or None if not found
+        """查找可执行文件路径。
+
+        参数：
+            executable_name: 可执行文件名。
+            possible_path: 候选路径列表。
+            environment_variable: 待检查的环境变量列表。
+
+        返回：
+            可执行文件路径；未找到时返回 None。
         """
-        # Common executable paths
+        # 常见可执行文件路径。
         paths: List[str] = []
         paths.extend(possible_path)
         paths.extend(os.environ.get(env_var, "") for env_var in environment_variable)
         paths = list(set(paths))
 
-        # Check if path is set in environment variable
+        # 检查环境变量是否指定路径。
         for path in paths:
             if os.path.exists(path):
                 logger.info(f"Found {executable_name} at {path}")
                 return path
 
-        # Try to find in PATH
+        # 尝试在 PATH 中查找。
         result = subprocess.run(
             ["which", executable_name], capture_output=True, text=True
         )
@@ -370,12 +367,8 @@ class DocParser(Docx2Parser):
         return None
 
     def _try_find_soffice(self) -> Optional[str]:
-        """Find LibreOffice/OpenOffice executable path
-
-        Returns:
-            Executable path, or None if not found
-        """
-        # Common LibreOffice/OpenOffice executable paths
+        """查找 LibreOffice/OpenOffice 可执行文件，未找到时返回 None。"""
+        # LibreOffice/OpenOffice 常见可执行文件路径。
         possible_paths = [
             # Linux
             "/usr/bin/soffice",
@@ -394,12 +387,8 @@ class DocParser(Docx2Parser):
         )
 
     def _try_find_antiword(self) -> Optional[str]:
-        """Find antiword executable path
-
-        Returns:
-            Executable path, or None if not found
-        """
-        # Common antiword executable paths
+        """查找 antiword 可执行文件，未找到时返回 None。"""
+        # antiword 常见可执行文件路径。
         possible_paths = [
             # Linux/macOS
             "/usr/bin/antiword",

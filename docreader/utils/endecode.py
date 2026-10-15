@@ -1,11 +1,6 @@
-"""
-Encoding and Decoding Utilities Module
+"""编码与解码工具模块。
 
-This module provides utilities for encoding and decoding various data types,
-with a focus on image and text data conversion:
-- Image encoding/decoding (base64)
-- Text encoding/decoding (multiple character sets)
-- Bytes conversion utilities
+提供图片 Base64 编解码、多字符集文本转换和字节转换工具。
 """
 
 import base64
@@ -20,52 +15,42 @@ logger = logging.getLogger(__name__)
 
 
 def decode_image(image: Union[str, bytes, Image.Image, np.ndarray]) -> str:
-    """Convert image to base64 encoded string.
+    """将图片转换为 Base64 字符串，便于嵌入 JSON、HTML 等文本格式。
 
-    This function handles multiple image input formats and converts them
-    to a base64 encoded string representation, which is useful for embedding
-    images in JSON, HTML, or other text-based formats.
+    参数：
+        image: 图片文件路径、原始 bytes、PIL/Pillow Image 或 NumPy 数组。
 
-    Args:
-        image: Image in one of the following formats:
-            - str: File path to an image file
-            - bytes: Raw image bytes data
-            - Image.Image: PIL/Pillow Image object
-            - np.ndarray: NumPy array representing image data
+    返回：
+        图片的 Base64 字符串。
 
-    Returns:
-        str: Base64 encoded string representation of the image
+    异常：
+        ValueError: 不支持该图片类型。
 
-    Raises:
-        ValueError: If the image type is not supported
-
-    Example:
-        >>> # From file path
+    示例：
         >>> base64_str = decode_image("/path/to/image.png")
-        >>> # From PIL Image
         >>> from PIL import Image
         >>> img = Image.open("photo.jpg")
         >>> base64_str = decode_image(img)
     """
     if isinstance(image, str):
-        # Handle file path: read file and encode to base64
+        # 图片路径：读取文件并编码为 Base64。
         with open(image, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode()
 
     elif isinstance(image, bytes):
-        # Handle raw bytes: directly encode to base64
+        # 原始字节：直接编码为 Base64。
         return base64.b64encode(image).decode()
 
     elif isinstance(image, Image.Image):
-        # Handle PIL Image: save to buffer then encode
+        # PIL 图片：先写入缓冲区，再编码。
         buffer = io.BytesIO()
-        # Use original format if available, otherwise default to PNG
+        # 优先保留原始格式；没有格式信息时使用 PNG。
         img_format = image.format if image.format else "PNG"
         image.save(buffer, format=img_format)
         return base64.b64encode(buffer.getvalue()).decode()
 
     elif isinstance(image, np.ndarray):
-        # Handle numpy array: convert to PIL Image, then encode as PNG
+        # NumPy 数组：先转为 PIL 图片，再按 PNG 编码。
         pil_image = Image.fromarray(image)
         buffer = io.BytesIO()
         pil_image.save(buffer, format="PNG")
@@ -75,40 +60,32 @@ def decode_image(image: Union[str, bytes, Image.Image, np.ndarray]) -> str:
 
 
 def encode_image(image: str, errors="strict") -> bytes:
-    """Decode a base64 encoded image string back to bytes.
+    """将 Base64 图片字符串解码为原始字节。
 
-    This function converts a base64 encoded string representation of an image
-    back into its original binary bytes format.
+    参数：
+        image: 图片的 Base64 字符串。
+        errors: 错误处理方式；strict 默认抛出异常，ignore 在失败时返回空字节，
+            也可传入 codecs.register_error 注册的其他名称。
 
-    Args:
-        image: Base64 encoded string representation of an image
-        errors: Error handling scheme for decoding errors:
-            - 'strict' (default): Raise on decoding errors
-            - 'ignore': Return empty bytes on decoding errors
-            - Any other name registered with codecs.register_error
+    返回：
+        解码后的 bytes；ignore 模式下失败则返回空字节。
 
-    Returns:
-        bytes: Decoded image bytes, or empty bytes if errors='ignore' and decoding fails
+    异常：
+        ValueError: strict 模式下解码失败。填充或字符集错误会产生 binascii.Error，
+            非 ASCII 字符串会产生 ValueError；前者是后者的子类，故统一捕获。
 
-    Raises:
-        ValueError: If decoding fails and errors='strict'. base64.b64decode
-            signals bad padding or a bad alphabet with binascii.Error, and a
-            non-ASCII str with a plain ValueError; binascii.Error subclasses
-            ValueError, so both arrive as one.
-
-    Example:
+    示例：
         >>> base64_str = "iVBORw0KGgoAAAANSUhEUgAAAAUA..."
         >>> image_bytes = encode_image(base64_str)
-        >>> # With error handling
         >>> image_bytes = encode_image(base64_str, errors="ignore")
     """
     try:
-        # Attempt to decode the base64 string to bytes
+        # 尝试将 Base64 字符串解码为字节。
         image_bytes = base64.b64decode(image)
     except ValueError as e:
-        # Catching binascii.Error alone would miss the non-ASCII case: a str
-        # that is not pure ASCII fails before the decoder runs and surfaces as
-        # a plain ValueError, which errors="ignore" is supposed to absorb.
+        # 仅捕获 binascii.Error 会遗漏非 ASCII 字符串：
+        # 这类输入在进入解码器之前就会触发普通 ValueError，
+        # errors="ignore" 模式也需要处理该异常。
         if errors == "ignore":
             return b""
         else:
@@ -181,18 +158,18 @@ def decode_bytes(
         >>> # Decode with custom encodings
         >>> text = decode_bytes(content, encodings=["utf-8", "gbk"])
     """
-    # Try decoding with each encoding format in order
+    # 按顺序尝试各字符编码。
     for encoding in encodings:
         try:
             text = content.decode(encoding)
             logger.debug(f"Decode content with {encoding}: {len(text)} characters")
             return text
         except UnicodeDecodeError:
-            # This encoding didn't work, try the next one
+            # 当前编码不适用，继续尝试下一个。
             continue
 
-    # Fallback: use latin-1 with error replacement if all encodings fail
-    # latin-1 can decode any byte sequence, but may produce incorrect characters
+    # 所有编码均失败时，回退到 latin-1，并替换无法处理的字符。
+    # latin-1 可解码任意字节序列，但结果可能存在错误字符。
     text = content.decode(encoding="latin-1", errors="replace")
     logger.warning(
         "Unable to determine correct encoding, using latin-1 as fallback. "
@@ -202,7 +179,7 @@ def decode_bytes(
 
 
 if __name__ == "__main__":
-    # Example: Test encode_image with error handling
-    # This demonstrates decoding a base64 string with 'ignore' error mode
+    # 示例：测试 encode_image 的错误处理。
+    # 演示使用 ignore 模式解码 Base64 字符串。
     img = "test![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMgA)test"
     encode_image(img, errors="ignore")

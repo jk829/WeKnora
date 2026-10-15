@@ -1,19 +1,11 @@
-"""PDF parsing with per-page routing between native text and scanned images.
+"""按页在原生文本提取和扫描图像渲染之间选择的 PDF 解析模块。
 
-Design (aligned with how MinerU / Docling / DeepDoc route PDFs):
-
-* The dominant signal for "this page is scanned" is the **image-area coverage
-  ratio** (image bounding-box area / page area), not the raw character count.
-  A scanned page is essentially one big image covering the whole page, even
-  when it carries a (often low-quality) embedded OCR text layer. Trusting that
-  embedded text layer is what produced garbled RAG content before.
-* Pages are classified independently so hybrid PDFs (some native, some scanned)
-  are handled correctly. Native pages contribute their text layer; scanned
-  pages are rendered to JPEG and tagged ``image_source_type=scanned_pdf`` so the
-  Go App performs OCR/VLM on them (docreader itself never runs OCR).
-
-No external services (e.g. MinerU) are required: the builtin engine is fully
-self-sufficient using pypdfium2 + the Go-side OCR that already exists.
+主要依据图片覆盖面积与页面面积之比判断扫描页，而非只看字符数量。
+扫描页通常由整页大图构成，即使存在低质量的内嵌 OCR 文本层也不应直接信任。
+逐页分类可正确处理文本页与扫描页混排的文档：文本页保留文本层，
+扫描页渲染为 JPEG，并标记 image_source_type=scanned_pdf，由 Go 应用执行 OCR/VLM。
+docreader 自身不运行 OCR。内置引擎依赖 pypdfium2 和已有 Go 端 OCR，
+无需 MinerU 等外部服务。
 """
 
 import base64
@@ -173,10 +165,9 @@ def _normalize_image_quality(quality: int) -> int:
 
 
 def _classify_page(image_area_ratio: float, text_len: int) -> str:
-    """Classify a page as ``"scanned"`` or ``"text"``.
+    """将页面分类为 scanned 或 text。
 
-    Image-area coverage is the primary signal; a sparse text layer combined with
-    some image content is the secondary signal.
+    优先依据图片面积覆盖率，其次结合稀疏文本层和图片内容判断。
     """
     if image_area_ratio >= SCAN_IMAGE_AREA_RATIO:
         return "scanned"
@@ -186,10 +177,9 @@ def _classify_page(image_area_ratio: float, text_len: int) -> str:
 
 
 def _page_image_area_ratio(page, raw) -> float:
-    """Return the fraction of the page area covered by image objects.
+    """返回图片对象覆盖面积与页面面积的比值。
 
-    Overlapping images can push the ratio above 1.0; callers only compare it
-    against a threshold so that is harmless.
+    图片重叠时比值可能超过 1.0；调用方仅用其比较阈值，因此不影响判断。
     """
     width, height = page.get_size()
     page_area = float(width) * float(height)
@@ -208,7 +198,7 @@ def _page_image_area_ratio(page, raw) -> float:
 
 
 def _extract_page_text(page) -> str:
-    """Plain top-to-bottom text extraction (fallback path)."""
+    """按从上到下的顺序提取纯文本，作为回退路径。"""
     textpage = None
     try:
         textpage = page.get_textpage()
@@ -218,7 +208,7 @@ def _extract_page_text(page) -> str:
 
 
 def _sanitize_pdf_text(text: str) -> str:
-    """Remove PDF text-layer placeholders and repair broken hyphenations."""
+    """移除 PDF 文本层中的占位符，并修复断行连字符。"""
     if not text:
         return text
     text = _PDF_ARTIFACT_RE.sub("", text)
@@ -241,7 +231,7 @@ def _is_chart_debris_line(line: str) -> bool:
 
 
 def _strip_chart_text_debris(text: str) -> str:
-    """Drop runs of axis/legend lines leaked from vector figures into the text layer."""
+    """移除矢量图中混入文本层的连续坐标轴或图例行。"""
     if not text:
         return text
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -280,7 +270,7 @@ def _strip_arxiv_and_page_num_lines(text: str) -> str:
 
 
 def _strip_lines_above_figure_captions(text: str) -> str:
-    """Remove diagram/chart label lines that sit immediately above a Figure caption."""
+    """移除紧邻 Figure 图注上方的图表标签行。"""
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
     out: list = []
     for ln in lines:
@@ -301,7 +291,7 @@ def _is_body_paragraph_line(text: str) -> bool:
 
 
 def _is_figure_interior_line(text: str) -> bool:
-    """Short, non-body line directly above a Figure caption (diagram labels, ticks)."""
+    """判断是否为 Figure 图注上方的短非正文行，如图示标签或刻度。"""
     t = text.strip()
     if not t or _FIGURE_CAPTION_RE.match(t):
         return False
@@ -332,7 +322,7 @@ def _postprocess_pdf_text(text: str) -> str:
 
 
 def _char_looks_chart_axis_tick(ch: str) -> bool:
-    """Axis tick / numeric chart labels only (not words like ``layer`` in diagrams)."""
+    """仅识别坐标刻度或数字图表标签，不将图中 layer 等单词视为刻度。"""
     t = ch.strip()
     if not t:
         return False
@@ -365,7 +355,7 @@ def _bbox_area_ratio(bbox, page_w: float, page_h: float) -> float:
 
 
 def _chart_region_bbox(chars: list, page_w: float, page_h: float):
-    """Bounding box of numeric chart axis labels (fallback when caption walk fails)."""
+    """获取数字坐标轴标签的边界框，供图注回溯失败时使用。"""
     chart = [c for c in chars if _char_looks_chart_axis_tick(c["ch"])]
     if len(chart) < MIN_CHART_REGION_CHARS:
         return None
@@ -397,7 +387,7 @@ def _expand_chart_bbox(bbox, page_w: float, page_h: float, margin_frac: float = 
 
 
 def _render_page_clip_jpeg(page, bbox, scale: float, quality: int, max_edge: int) -> bytes:
-    """Render a PDF page region to JPEG (bbox in PDF points, bottom-left origin)."""
+    """将 PDF 页面区域渲染为 JPEG，bbox 使用左下角原点的 PDF 点坐标。"""
     left, bottom, right, top = bbox
     scale_eff = _effective_scale(page, scale, max_edge)
     bitmap = None
@@ -425,7 +415,7 @@ def _pil_to_jpeg_bytes(pil, quality: int) -> bytes:
 
 
 def _group_lines_with_chars(chars: list) -> list:
-    """Group glyphs into lines; each line includes its char list and bbox."""
+    """将字形分组为文本行，每行包含字符列表和边界框。"""
     if not chars:
         return []
     heights = [c["y1"] - c["y0"] for c in chars if c["y1"] > c["y0"]]
@@ -469,7 +459,7 @@ def _line_has_figure_caption(text: str) -> bool:
 
 
 def _bbox_above_caption(lines: list, cap_i: int, page_w: float, page_h: float):
-    """Region above a Figure caption line (PDF coords, bottom-left origin)."""
+    """获取 Figure 图注行上方的区域，使用左下角原点的 PDF 坐标。"""
     cap_bbox = lines[cap_i]["bbox"]
     cap_top = cap_bbox[3]
     x0, x1 = cap_bbox[0], cap_bbox[2]
@@ -504,7 +494,7 @@ def _bbox_above_caption(lines: list, cap_i: int, page_w: float, page_h: float):
 
 
 def _cap_bbox_height(bbox, page_h: float, cap_y_top: float) -> tuple:
-    """Limit figure bbox height (PDF coords, bottom-left origin)."""
+    """限制图片边界框的高度，使用左下角原点的 PDF 坐标。"""
     x0, y0, x1, y1 = bbox
     max_top = min(y1, cap_y_top + page_h * MAX_FIGURE_HEIGHT_RATIO)
     if max_top <= y0:
@@ -513,7 +503,7 @@ def _cap_bbox_height(bbox, page_h: float, cap_y_top: float) -> tuple:
 
 
 def _inject_figure_markdown_before_captions(text: str, clips: list) -> str:
-    """Place ``![...]()`` immediately before each Figure caption line in page text."""
+    """在页面文本的每个 Figure 图注行前插入 ![...]() 图片引用。"""
     if not clips:
         return text
     lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -543,9 +533,9 @@ def _extract_vector_figure_clips(
     quality: int,
     max_edge: int,
 ) -> list:
-    """Render vector figure regions anchored at each ``Figure N.`` caption on the page.
+    """以页面上各 Figure N. 图注为锚点，渲染对应矢量图区域。
 
-    Returns ``[(ref_path, b64, y_sort, caption_line), ...]`` for markdown injection.
+    返回 [(ref_path, b64, y_sort, caption_line), ...]，用于插入 Markdown 图片。
     """
     if not RENDER_VECTOR_FIGURES or not re.search(r"\bFigure\s+\d+", plain_text, re.I):
         return []
@@ -606,7 +596,7 @@ def _extract_vector_figure_clips(
 
 
 def _collect_invisible_boxes(page, raw) -> list:
-    """Bounding boxes of invisible (render-mode 3) text objects on the page."""
+    """获取页面中不可见文本对象（渲染模式 3）的边界框。"""
     boxes: list = []
     try:
         for obj in page.get_objects():
@@ -638,12 +628,11 @@ def _point_in_boxes(x: float, y: float, boxes: list) -> bool:
 
 
 def _page_chars(textpage, page, raw, loose: bool = False) -> tuple:
-    """Return ``(chars, page_width)`` with hidden/off-page glyphs filtered.
+    """过滤隐藏及页面范围外的字形，返回 (chars, page_width)。
 
-    Working at the glyph level (instead of pdfium rect segments) keeps mixed
-    CJK + Latin/number lines in their true left-to-right order, which the
-    rect-level ``get_text_bounded`` API scrambles. ``loose`` boxes span the
-    font's ascent to descent, so every glyph of a line shares one height.
+    按字形处理可保留中日韩文字与拉丁字母、数字混排时的真实左右顺序，
+    避免矩形级 get_text_bounded API 打乱顺序。loose 边界框覆盖字体上升部到下降部，
+    使同一行的所有字形使用一致高度。
     """
     n = textpage.count_chars()
     if n <= 0:
@@ -679,10 +668,9 @@ def _page_chars(textpage, page, raw, loose: bool = False) -> tuple:
 
 
 def _find_split(items: list, axis: str, min_gap: float):
-    """Return a coordinate at the widest clean gap on ``axis`` ('x'), or None.
+    """返回 axis（x 轴）上最宽净空隙的坐标，没有则返回 None。
 
-    A "clean" gap means no item interval bridges it — i.e. a full-height column
-    gutter. Used to detect multi-column layouts.
+    净空隙指没有任何元素区间跨越的整页高栏间距，用于检测多栏布局。
     """
     lo, hi = ("x0", "x1") if axis == "x" else ("y0", "y1")
     intervals = sorted(((s[lo], s[hi]) for s in items), key=lambda iv: iv[0])
@@ -698,7 +686,7 @@ def _find_split(items: list, axis: str, min_gap: float):
 
 
 def _split_columns(chars: list, scale: float, width: float, depth: int = 0) -> list:
-    """Split glyphs into reading-order columns at full-height gutters."""
+    """沿贯穿页面高度的栏间距，将字形拆分为按阅读顺序排列的文本栏。"""
     if len(chars) <= 1 or depth > 10:
         return [chars]
     min_gap = max(scale * 2.5, width * 0.04)
@@ -728,11 +716,10 @@ def _column_single_line_fraction(lines: list) -> float:
 
 
 def _is_artifact_column(chars: list, width: float) -> bool:
-    """Detect margin strips and vertical watermarks (e.g. arXiv sidebar).
+    """检测页边窄条和竖向水印，如 arXiv 侧栏。
 
-    Docling / MinerU solve this with learned layout regions; here we use
-    geometry only: a narrow column whose lines are mostly one glyph tall is not
-    part of the reading order.
+    Docling/MinerU 使用学习得到的版面区域；这里仅按几何特征判断：
+    若窄栏中多数行只有一个字形高，则不将其纳入正文阅读顺序。
     """
     if not chars or width <= 0:
         return True
@@ -753,7 +740,7 @@ def _is_artifact_column(chars: list, width: float) -> bool:
 
 
 def _filter_reading_columns(chars: list, scale: float, width: float) -> list:
-    """Split into columns and drop margin / watermark strips."""
+    """拆分文本栏，并移除页边条带和水印。"""
     cols = _split_columns(chars, scale, width)
     kept = [c for c in cols if not _is_artifact_column(c, width)]
     if kept:
@@ -765,10 +752,10 @@ def _filter_reading_columns(chars: list, scale: float, width: float) -> list:
 
 
 def _merge_orphan_punctuation_lines(lines: list) -> list:
-    """Attach lines that are only punctuation to the previous visual line.
+    """将仅含标点的行合并到前一视觉行。
 
-    Many PDFs place ``.`` in figure labels or footnotes on a slightly different
-    baseline; grouping by y then leaves ``Figure 1`` and ``2:`` on separate lines.
+    部分 PDF 的图示标签或脚注标点使用略有差异的基线，
+    直接按 y 分组会将 Figure 1 与 2: 等内容拆成两行。
     """
     if not lines:
         return []
@@ -793,7 +780,7 @@ def _merge_orphan_punctuation_lines(lines: list) -> list:
 
 
 def _join_line_glyphs(ln_sorted: list) -> str:
-    """Join a visual line's glyphs, inferring word spaces from horizontal gaps."""
+    """拼接视觉行中的字形，并依据水平间距推断单词间空格。"""
     if not ln_sorted:
         return ""
     widths = [c["x1"] - c["x0"] for c in ln_sorted if c["x1"] > c["x0"]]
@@ -818,7 +805,7 @@ def _join_line_glyphs(ln_sorted: list) -> str:
 
 
 def _group_lines(chars: list) -> list:
-    """Group a column's glyphs into lines (top-to-bottom, glyphs sorted by x)."""
+    """将一栏的字形按从上到下分组为行，行内按 x 坐标排序。"""
     if not chars:
         return []
     heights = [c["y1"] - c["y0"] for c in chars if c["y1"] - c["y0"] > 0]
@@ -852,7 +839,7 @@ def _group_lines(chars: list) -> list:
 
 
 def _segments_to_markdown(lines: list) -> str:
-    """Render merged lines to text, promoting visually large lines to headings."""
+    """将合并后的文本行输出为正文，并把视觉字号较大的行提升为标题。"""
     if not lines:
         return ""
     body = statistics.median([ln["h"] for ln in lines])
@@ -899,7 +886,7 @@ def _chars_to_layout_markdown(chars: list, scale: float, width: float) -> str:
 
 
 def _layout_line_stats(text: str) -> tuple:
-    """Return (line_count, single_char_line_count, punct_only_line_count)."""
+    """返回 (总行数, 单字符行数, 纯标点行数)。"""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return 0, 0, 0
@@ -913,7 +900,7 @@ def _layout_line_stats(text: str) -> tuple:
 
 
 def _layout_garbled_line_fraction(text: str) -> float:
-    """Share of lines that look like broken OCR (many 1–2 letter tokens)."""
+    """统计疑似破损 OCR 行的比例，其特征是含大量一至两个字母的短词元。"""
     lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
     if not lines:
         return 0.0
@@ -926,12 +913,10 @@ def _layout_garbled_line_fraction(text: str) -> float:
 
 
 def _plain_is_well_formed(plain: str) -> bool:
-    """True when pdfium plain text already has usable words and punctuation.
+    """判断 pdfium 原始文本是否已具有可用的单词和标点。
 
-    Academic PDFs (arXiv) and TOCs already expose a good text layer; running
-    geometric layout on them often destroys citations and words. Scanned books
-    with a poor text layer (no commas in refs, short glued tokens) still need
-    layout gap inference.
+    学术 PDF（如 arXiv）和目录往往已有较好的文本层，几何重排反而可能破坏
+    引用和单词。文本层较差的扫描书籍，如参考文献缺逗号或短词粘连，仍需推断间距。
     """
     plain = (plain or "").strip()
     if not plain:
@@ -948,7 +933,7 @@ def _plain_is_well_formed(plain: str) -> bool:
 
 
 def _should_prefer_plain(plain: str, layout: str) -> bool:
-    """Fall back to pdfium plain text when layout reconstruction looks broken."""
+    """版面重建结果疑似损坏时，回退到 pdfium 纯文本。"""
     layout = (layout or "").strip()
     plain = (plain or "").strip()
     if not layout:
@@ -988,10 +973,9 @@ def _should_prefer_plain(plain: str, layout: str) -> bool:
 
 
 def _extract_layout_text(page, raw) -> str:
-    """Layout-aware extraction: reading order + headings + hidden-text filter.
+    """根据版面提取文本，处理阅读顺序、标题和隐藏文字过滤。
 
-    Falls back to plain extraction on any failure so a single odd page never
-    breaks the document.
+    任何失败都回退到普通提取，避免单个异常页面导致整份文档失败。
     """
     textpage = None
     try:
@@ -1017,13 +1001,11 @@ LINE_SEGMENT_MIN_CHARS = 3
 
 
 def _split_line_at_gaps(line: dict) -> list:
-    """Cut a visual line where it crosses from one column into another.
+    """在视觉行跨越文本栏的位置拆开该行。
 
-    Narrow two-column gutters (ACL/IEEE papers leave ~16pt) and anything that
-    spans them (a title, a wide table) defeat the full-height gutter search,
-    so glyphs of both columns land in one line; each side must be placed and
-    boxed on its own. Columns are far apart in the text stream while glyphs of
-    one line are consecutive, which keeps wide justified word spaces intact.
+    ACL/IEEE 论文可能仅有约 16 点的窄栏间距，跨栏标题或宽表格也会使
+    整页栏间距检测失效，从而将两栏字形合并到同一行。必须分别定位并生成边界框。
+    两栏在文本流中的距离较远，而同一行字形通常连续，可据此保留两端对齐产生的大词间距。
     """
     whole = [{"text": line["text"], "bbox": line["bbox"]}]
     chars = [c for c in line["chars"] if not c["ch"].isspace()]
@@ -1048,11 +1030,10 @@ def _split_line_at_gaps(line: dict) -> list:
 
 
 def _page_line_boxes(page, raw) -> list:
-    """Visual lines of a text page as ``{"text", "bbox"}`` in PDF points.
+    """返回文本页的视觉行，格式为包含 text、bbox 的字典，坐标单位为 PDF 点。
 
-    Lines are grouped per column so a two-column page does not fuse the
-    columns' glyphs into one line. Any failure yields no lines, which only
-    downgrades the page's locators to page numbers.
+    按文本栏分组，避免双栏字形合并为一行。失败时返回空列表，
+    仅使该页定位信息降级为页码，不影响正文解析。
     """
     textpage = None
     try:
@@ -1085,11 +1066,10 @@ def _page_geometry(page):
 
 
 def _effective_scale(page, scale: float, max_edge: int) -> float:
-    """Reduce ``scale`` so the rendered long edge never exceeds ``max_edge`` px.
+    """降低 scale，确保渲染后长边不超过 max_edge 像素。
 
-    Some scanned PDFs declare enormous page boxes; rendering those at the raw
-    DPI scale produces 100+ MP JPEGs that exceed the gRPC message limit and are
-    far higher resolution than OCR needs.
+    部分扫描 PDF 声明极大的页面尺寸，按原始 DPI 渲染会生成上亿像素 JPEG，
+    超过 gRPC 消息上限，分辨率也远超 OCR 所需。
     """
     if max_edge <= 0:
         return scale
@@ -1143,12 +1123,11 @@ def _render_pool_task(args):
 
 
 def _select_mp_context():
-    """Pick the safest available multiprocessing start method.
+    """选择当前平台可用且较安全的多进程启动方式。
 
-    ``forkserver`` forks workers from a clean, single-threaded server process,
-    avoiding the fork-in-a-multithreaded-process hazards of the gRPC server.
-    Falls back to ``fork`` and finally returns ``None`` (serial) when neither
-    is available (e.g. Windows/dev).
+    forkserver 从干净的单线程服务进程创建工作进程，避免在 gRPC 多线程进程中
+    直接 fork 的风险。其次尝试 fork；两者都不可用时返回 None，改为串行处理，
+    例如 Windows 开发环境。
     """
     import multiprocessing as mp
 
@@ -1163,11 +1142,10 @@ def _select_mp_context():
 def _render_pages_parallel(
     content: bytes, indices: list, scale: float, quality: int, max_edge: int, workers: int
 ) -> dict | None:
-    """Render ``indices`` in parallel. Returns ``{index: jpeg_bytes}`` or None.
+    """并行渲染 indices 指定的页面，返回 {页索引: JPEG 字节} 或 None。
 
-    Returns None to signal the caller to fall back to serial rendering (when
-    parallelism is disabled, only one page is requested, or no usable
-    multiprocessing start method exists).
+    禁用并行、仅请求一页或无可用的多进程启动方式时返回 None，
+    通知调用方改用串行渲染。
     """
     if workers <= 1 or len(indices) <= 1:
         return None
@@ -1215,11 +1193,10 @@ def _render_pages_parallel(
 def _render_scanned_pages(
     pdf, content: bytes, indices: list, scale: float, quality: int, max_edge: int
 ) -> dict:
-    """Render the given (scanned) page indices to JPEG bytes.
+    """将指定扫描页索引渲染为 JPEG 字节。
 
-    Tries process-parallel rendering first (big win for large scanned PDFs),
-    transparently falling back to serial rendering on the already-open ``pdf``
-    handle when parallelism is unavailable or fails.
+    优先采用进程并行以加速大型扫描 PDF；不可用或失败时，
+    使用已打开的 pdf 句柄透明回退到串行渲染。
     """
     parallel = _render_pages_parallel(
         content, indices, scale, quality, max_edge, CONFIG.pdf_render_parallelism
@@ -1246,12 +1223,11 @@ def _select_embedded_images(
     repeat_frac: float = EMBED_REPEAT_PAGE_FRAC,
     max_images: int = EMBED_MAX_IMAGES,
 ) -> list:
-    """Decide which embedded-image candidates to keep (pure function).
+    """决定保留哪些内嵌图片候选项的纯函数。
 
-    ``meta`` is a list of dicts with keys ``page``, ``width``, ``height``,
-    ``area_ratio`` and ``hash``. Returns the indices (into ``meta``) to keep,
-    after filtering by size, page-area share, cross-page repetition (logos /
-    watermarks), exact in-page duplicates and a hard count cap.
+    meta 为包含 page、width、height、area_ratio、hash 的字典列表。
+    按尺寸、页面面积占比、跨页重复（标志或水印）、页内完全重复和总数量上限过滤，
+    返回需要保留的 meta 索引。
     """
     from collections import defaultdict
 
@@ -1282,20 +1258,16 @@ def _select_embedded_images(
 
 
 def _decode_embedded_image_pil(obj):
-    """Decode an embedded image the way a PDF viewer displays it.
+    """按 PDF 查看器实际显示效果解码内嵌图片。
 
-    ``get_bitmap()`` returns the raw image plane and ignores any /SMask (soft
-    transparency mask). Figures exported from plotting tools often store a
-    black base plane with the visible content in the mask, so the raw plane
-    decodes to an all-black rectangle. ``get_bitmap(render=True)`` renders the
-    object through pdfium's imaging pipeline and carries the mask as an alpha
-    channel; compositing over white then yields what the page looks like
-    (JPEG cannot keep alpha, and pages render on white).
+    get_bitmap() 只返回原始图像平面，忽略 /SMask 透明蒙版。绘图工具可能将
+    可见内容放在蒙版中、底图设为黑色，直接解码会得到黑色矩形。
+    get_bitmap(render=True) 经 pdfium 成像流程渲染并保留 alpha 通道，
+    再与白色背景合成，得到页面上的效果；JPEG 无法保留 alpha。
 
-    The ``PdfBitmap`` is kept alive until pixels are copied: ``to_pil()``
-    shares the pdfium buffer for RGBA/RGBX/L, and releasing the handle first
-    would use-after-free. Opaque RGB/L images keep their mode so grayscale
-    hashes and JPEGs stay single-channel.
+    必须在复制像素前保持 PdfBitmap 存活：RGBA/RGBX/L 模式下 to_pil()
+    共享 pdfium 缓冲区，提前释放句柄会导致释放后使用。无透明度的 RGB/L 图片
+    保留原模式，使灰度哈希和 JPEG 仍为单通道。
     """
     from PIL import Image
 
@@ -1328,10 +1300,10 @@ def _decode_embedded_image_pil(obj):
 
 
 def _extract_embedded_images(pdf, classes, raw, base_name: str, quality: int) -> dict:
-    """Extract filtered embedded figures from native text pages.
+    """从原生文本页提取经过筛选的内嵌插图。
 
-    Returns ``{page_index: [(ref_path, base64_jpeg, y_top), ...]}`` ordered so
-    callers can place figures after the page text in top-to-bottom order.
+    返回 {页索引: [(引用路径, Base64 JPEG, 顶部 y 坐标), ...]}，
+    以便调用方按从上到下顺序将插图放在页面文本之后。
     """
     import hashlib
 
@@ -1410,12 +1382,10 @@ def _extract_embedded_images(pdf, classes, raw, base_name: str, quality: int) ->
 
 
 def _strip_repeating_lines(texts: list, classes: list) -> list:
-    """Remove running headers/footers that repeat across most text pages.
+    """移除在多数文本页重复出现的页眉和页脚。
 
-    Conservative: only the first/last non-empty line of each text page is a
-    candidate, the line must be short, and it must appear on at least 60% of the
-    text pages (and there must be enough pages to judge). Mirrors DeepDoc's
-    cross-page "garbage set" idea without risking removal of real content.
+    采用保守规则：仅检查每页首尾非空短行，且要求至少在 60% 的文本页出现，
+    并有足够页数可供判断。参考 DeepDoc 的跨页重复集合思路，降低误删正文风险。
     """
     from collections import Counter
 
@@ -1448,10 +1418,9 @@ def _strip_repeating_lines(texts: list, classes: list) -> list:
 
 
 class PDFScannedParser(BaseParser):
-    """Render every PDF page to a JPEG image.
+    """将 PDF 每一页渲染为 JPEG。
 
-    Used as a robust last-resort fallback and for image-only PDFs. The Go App
-    performs OCR on the extracted page images.
+    用于纯图片 PDF 及最终回退路径；Go 应用对提取的页面图片执行 OCR。
     """
 
     def parse_into_text(self, content: bytes) -> Document:
@@ -1524,19 +1493,14 @@ class PDFScannedParser(BaseParser):
 
 
 class PDFParser(BaseParser):
-    """Per-page router between native text extraction and scanned rendering.
+    """逐页选择原生文本提取或扫描图像渲染。
 
-    For each page:
-      * native text page  -> keep its text layer (fast, pypdfium2)
-      * scanned page      -> render to JPEG, tag ``image_source_type=scanned_pdf``
-                             so the Go App OCRs it
+    原生文本页通过 pypdfium2 保留文本层；扫描页渲染为 JPEG，
+    并标记 image_source_type=scanned_pdf，交由 Go 应用执行 OCR。
+    混合文档按阅读顺序交错输出两类内容。意外失败时，回退为全部页面图片。
 
-    Hybrid documents interleave both in reading order. On any unexpected error
-    the parser falls back to rendering all pages as images (safe last resort).
-
-    Force-scanned mode (``pdf_force_scanned=true`` override or
-    ``DOCREADER_PDF_FORCE_SCANNED=true`` env) skips classification and
-    renders every page as an image.
+    通过 pdf_force_scanned=true 配置覆盖项或 DOCREADER_PDF_FORCE_SCANNED=true
+    环境变量启用强制扫描模式时，跳过分类，直接将每页渲染为图片。
     """
 
     def __init__(self, file_name: str = "", file_type=None, **kwargs):

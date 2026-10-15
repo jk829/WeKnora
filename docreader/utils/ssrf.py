@@ -1,7 +1,7 @@
-"""SSRF URL validation for docreader outbound HTTP requests.
+"""校验 docreader 对外 HTTP 请求的 URL，防范 SSRF。
 
-Mirrors the core policy in internal/utils/security.go so redirect targets
-during Playwright navigation are blocked the same way as Go-side imports.
+与 internal/utils/security.go 的核心策略保持一致，确保 Playwright
+导航中的重定向目标与 Go 端导入流程采用相同的拦截规则。
 """
 
 from __future__ import annotations
@@ -127,13 +127,11 @@ def _load_whitelist() -> Tuple[FrozenSet[str], Tuple[str, ...], Tuple[Union[ipad
 
 
 def _whitelist_only_enabled() -> bool:
-    """Whether SSRF_DNS_WHITELIST_ONLY makes the whitelist the whole egress
-    policy: a host outside it is refused before any DNS query (#3378).
+    """判断 SSRF_DNS_WHITELIST_ONLY 是否启用仅白名单出站策略。
 
-    Parsed like the Go side: 1/t/true enable it, 0/f/false disable it, and a
-    non-empty value that is neither enables it — silently leaving an egress
-    lockdown off because someone wrote "yes" is the one failure mode this
-    control must not have.
+    启用后，不在白名单内的主机在 DNS 查询前即被拒绝（#3378）。
+    解析规则与 Go 端一致：1/t/true 启用，0/f/false 禁用，其他非空值也启用。
+    这样可避免误填 yes 等值时静默关闭出站限制。
     """
     raw = os.environ.get("SSRF_DNS_WHITELIST_ONLY", "").strip()
     if not raw:
@@ -191,15 +189,15 @@ def _is_restricted_ip(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -
                 reason = _is_restricted_ip(embedded_ip)
                 if reason:
                     return f"Teredo {label} embeds {reason}"
-        # NAT64's well-known prefix (64:ff9b::/96, RFC 6052) and the deprecated
-        # IPv4-compatible form (::a.b.c.d) also carry a plain IPv4 address, but
-        # ipaddress exposes no accessor for either, so is_private and
-        # .sixtofour never see the payload. Without these two branches
-        # ::169.254.169.254 reads as an ordinary public IPv6 address.
-        # Mirrors internal/ipclass on the Go side.
+        # NAT64 公知前缀（64:ff9b::/96，RFC 6052）和已弃用的
+        # IPv4 兼容格式（::a.b.c.d）都携带 IPv4 地址，但
+        # ipaddress 没有对应访问接口，因此 is_private 和
+        # sixtofour 无法识别其中的地址。不增加这两个分支时，
+        # ::169.254.169.254 会被视为普通公网 IPv6 地址。
+        # 与 Go 端 internal/ipclass 的判断保持一致。
         packed = ip.packed
-        # RFC 8215 local-use NAT64 has deployment-specific IPv4 layouts.
-        # Reject the entire /48, matching internal/ipclass, on every Python version.
+        # RFC 8215 本地 NAT64 前缀中的 IPv4 布局因部署而异。
+        # 在所有 Python 版本中均拒绝整个 /48 网段，与 internal/ipclass 一致。
         if packed[:6] == b"\x00\x64\xff\x9b\x00\x01":
             return "local-use NAT64 translation address"
         if packed[0:4] == b"\x00\x64\xff\x9b" and packed[4:12] == bytes(8):
@@ -207,12 +205,12 @@ def _is_restricted_ip(ip: Union[ipaddress.IPv4Address, ipaddress.IPv6Address]) -
             if reason:
                 return f"NAT64-embedded {reason}"
         if packed[0:12] == bytes(12):
-            # :: and ::1 already returned above; ::ffff:a.b.c.d is handled by
-            # the ipv4_mapped branch.
+            # :: 和 ::1 已在前面处理；::ffff:a.b.c.d 由
+            # ipv4_mapped 分支处理。
             reason = _is_restricted_ip(ipaddress.IPv4Address(packed[12:16]))
             if reason:
                 return f"IPv4-compatible {reason}"
-        # Site-local (fec0::/10)
+        # 站点本地地址（fec0::/10）。
         if (ip.packed[0] == 0xFE) and (ip.packed[1] & 0xC0) == 0xC0:
             return "site-local IPv6 address"
     return None
@@ -243,7 +241,7 @@ def _resolve_host_ips(hostname: str) -> Tuple[Tuple[Union[ipaddress.IPv4Address,
 
 
 def is_ssrf_safe_url(raw_url: str) -> Tuple[bool, str]:
-    """Return (safe, reason). reason is empty when safe is True."""
+    """返回 (是否安全, 原因)；安全时原因为空字符串。"""
     if not raw_url or not raw_url.strip():
         return False, "URL is empty"
 
@@ -261,8 +259,8 @@ def is_ssrf_safe_url(raw_url: str) -> Tuple[bool, str]:
     if _is_whitelisted(hostname_lower):
         return True, ""
 
-    # Whitelist-only mode stops here: everything below resolves the name, and
-    # a host outside the whitelist must not reach DNS at all (#3378).
+    # 仅白名单模式在此直接返回：下面的逻辑会解析域名，
+    # 不在白名单内的主机不应触发任何 DNS 查询（#3378）。
     if _whitelist_only_enabled():
         return (
             False,
@@ -309,5 +307,5 @@ def is_ssrf_safe_url(raw_url: str) -> Tuple[bool, str]:
 
 
 def reset_ssrf_whitelist_cache_for_test() -> None:
-    """Clear cached whitelist entries (for unit tests only)."""
+    """清空缓存的白名单条目，仅供单元测试使用。"""
     _load_whitelist.cache_clear()

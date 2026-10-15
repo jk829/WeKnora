@@ -58,16 +58,13 @@ init_logging_request_id()
 def _resolve_images(
     images: dict, request_id: str, storage_map: dict | None = None
 ) -> tuple[str, list]:
-    """Resolve document images into inline bytes for the Go App to persist.
+    """将文档图片解码为内联字节，交由 Go 应用持久化。
 
-    ``images`` is a dict of {relative_path: raw_data} where raw_data is
-    base64-encoded string or raw bytes.
+    images 是 {相对路径: 原始数据} 字典，数据可以是 Base64 字符串或原始字节。
+    Go 应用负责写入配置的存储后端（local/minio/cos/tos）；此函数只解码图片，
+    通过 ImageRef 返回内联字节。
 
-    The Go App is solely responsible for persisting images to the configured
-    storage backend (local/minio/cos/tos). This function only decodes images
-    and returns them as inline bytes via ImageRef.
-
-    Returns ("", list[ImageRef]).  image_dir_path is always empty.
+    返回 ("", list[ImageRef])，image_dir_path 始终为空。
     """
     import base64
 
@@ -108,7 +105,7 @@ def _resolve_images(
 
 
 def _mime_for_ref(ref_path: str) -> tuple[str, str]:
-    """Return (filename, mime_type) for an image reference path."""
+    """根据图片引用路径返回 (文件名, MIME 类型)。"""
     mime_map = {
         ".png": "image/png",
         ".jpg": "image/jpeg",
@@ -123,11 +120,10 @@ def _mime_for_ref(ref_path: str) -> tuple[str, str]:
 
 
 def _iter_image_refs(images: dict):
-    """Yield ImageRef one at a time, freeing each source entry as we go.
+    """逐个生成 ImageRef，并及时释放对应的源数据。
 
-    Used by the streaming RPC so we never hold every decoded image plus its
-    base64 source in memory simultaneously (the inline path's peak-memory and
-    message-size problem for large scanned PDFs).
+    供流式 RPC 使用，避免同时保留所有已解码图片及其 Base64 源数据，
+    降低大型扫描 PDF 在内联传输时的内存峰值与消息尺寸压力。
     """
     import base64
 
@@ -153,9 +149,9 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
         self.parser = Parser()
 
     def _parse_request(self, request: ReadRequest):
-        """Run the parser for a ReadRequest, returning (result, source_desc).
+        """执行 ReadRequest 对应的解析，返回 (解析结果, 来源说明)。
 
-        Shared by the unary Read and streaming ReadStream RPCs.
+        由单次响应 Read 和流式 ReadStream RPC 共用。
         """
         cfg = request.config
         parser_engine = cfg.parser_engine if cfg else ""
@@ -188,7 +184,7 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
         return result, request.file_name
 
     def Read(self, request: ReadRequest, context):
-        """Unified read: file mode (file_content set) or URL mode (url set)."""
+        """统一读取入口：设置 file_content 时读取文件，设置 url 时读取网页。"""
         request_id = request.request_id or str(uuid.uuid4())
 
         with request_id_context(request_id):
@@ -226,11 +222,10 @@ class DocReaderServicer(docreader_pb2_grpc.DocReaderServicer):
                 return ReadResponse(error=str(e))
 
     def ReadStream(self, request: ReadRequest, context):
-        """Streaming read: yields one meta frame, then one frame per image.
+        """流式读取：先返回一个元数据帧，再逐张返回图片帧。
 
-        Each frame is a small, independent gRPC message, so documents with many
-        page images (large scanned PDFs) are returned without hitting the unary
-        message-size cap, and neither side has to hold the whole payload at once.
+        每帧都是独立的小型 gRPC 消息，使包含大量页面图片的扫描 PDF
+        不受单次响应消息大小上限约束，也无需任一端一次持有全部负载。
         """
         request_id = request.request_id or str(uuid.uuid4())
 

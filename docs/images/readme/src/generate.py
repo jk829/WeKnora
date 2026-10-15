@@ -1,12 +1,11 @@
-"""Generate the README artwork in the product website's visual language.
+"""按产品网站的视觉风格生成 README 插图。
 
-Outputs hero-*.svg, capabilities-*.svg, architecture-*.svg (per language and theme) and
-icons/*.svg into the directory above this script. Colors and fonts follow
-website-docs/shared/brand.css; line icons come from website-docs/homepage/app/ui.tsx.
-The wordmark PNGs are docs/images/logo.png cropped, with the white ground turned
-into alpha (dark variant recolors the navy lettering and keeps the gold).
+在脚本上级目录按语言和主题输出 hero-*.svg、capabilities-*.svg、
+architecture-*.svg 及 icons/*.svg。颜色和字体参考 website-docs/shared/brand.css，
+线条图标来自 website-docs/homepage/app/ui.tsx。字标 PNG 从 docs/images/logo.png
+裁剪，将白底转换为透明；深色版本调整海军蓝文字，保留金色。
 
-    python3 docs/images/readme/src/generate.py
+用法：python3 docs/images/readme/src/generate.py
 """
 import base64, io, os
 from PIL import Image, ImageFont
@@ -48,7 +47,7 @@ def serif(lang):
 
 MONO = "'JetBrains Mono', SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
 
-# Line icons copied from website-docs/homepage/app/ui.tsx (24x24, stroke).
+# 线条图标复制自 website-docs/homepage/app/ui.tsx，采用 24×24 描边。
 ICONS = {
     "search": '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5M8 8h5M8 11h3"/>',
     "agent": '<rect x="5" y="7" width="14" height="13" rx="3"/><path d="M12 3v4M2 11v5m20-5v5M9 12v1m6-1v1m-6 4h6"/><circle cx="12" cy="2.5" r=".5"/>',
@@ -58,7 +57,7 @@ ICONS = {
     "model": '<path d="m12 2 10 5-10 5L2 7l10-5Zm-10 10 10 5 10-5M2 17l10 5 10-5"/>',
 }
 
-try:  # Only used to measure latin text for line wrapping.
+try:  # 仅用于测量拉丁文字宽度以决定换行。
     LATIN = ImageFont.truetype("/System/Library/Fonts/Supplemental/Arial.ttf", 100)
 except OSError:
     LATIN = ImageFont.truetype("Arial.ttf", 100)
@@ -69,14 +68,14 @@ def is_wide(ch):
 
 
 def breaks_anywhere(ch):
-    """Han, kana and CJK punctuation can break between any two characters; Hangul breaks at spaces."""
+    """汉字、假名及中日韩标点可在任意字符间换行；韩文按空格换行。"""
     return is_wide(ch) and not 0xAC00 <= ord(ch) <= 0xD7AF
 
 
 def text_width(s, size, mono=False):
     w = 0.0
     for ch in s:
-        if 0xAC00 <= ord(ch) <= 0xD7AF:  # Hangul syllables render narrower than Han
+        if 0xAC00 <= ord(ch) <= 0xD7AF:  # 韩文音节的渲染宽度比汉字窄。
             w += size * 0.9
         elif is_wide(ch):
             w += size
@@ -88,7 +87,7 @@ def text_width(s, size, mono=False):
 
 
 def wrap(s, size, width):
-    """Greedy wrap: Han and kana break anywhere, latin and Hangul break at spaces."""
+    """贪心换行：汉字和假名可逐字断行，拉丁文字和韩文按空格断行。"""
     tokens, buf, group = [], "", ""
     for ch in s:
         if group or ch in "（(":  # keep a bracketed aside like （任意） on one line
@@ -201,13 +200,13 @@ def hero(lang, theme):
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" aria-label="WeKnora">',
          f'<rect x="1" y="1" width="{W-2}" height="{H-2}" rx="20" fill="{t["panel"]}" stroke="{t["rule"]}" stroke-width="2"/>',
          f'<image href="{wordmark(theme)}" x="72" y="60" width="226" height="52"/>']
-    # eyebrow + headline + description
+    # 引题、主标题和描述。
     o += [f'<text x="72" y="208" font-family="{MONO}" font-size="20" letter-spacing="3" fill="{t["gold"]}">{c["eyebrow"]}</text>',
           f'<text x="68" y="{208+c["h1_size"]+22}" font-family="{serif(lang)}" font-size="{c["h1_size"]}" fill="{t["ink"]}">{esc(c["h1"][0])}</text>',
           f'<text x="68" y="{208+2*c["h1_size"]+44}" font-family="{serif(lang)}" font-size="{c["h1_size"]}" fill="{t["gold"]}">{esc(c["h1"][1])}</text>']
     for i, line in enumerate(c["desc"]):
         o.append(f'<text x="72" y="{desc_y+i*42}" font-family="{sans(lang)}" font-size="27" fill="{t["soft"]}">{esc(line)}</text>')
-    # what's inside: the three core modes first, then five more highlights, 2 x 4
+    # 内容区：先展示三个核心模式，再展示五个亮点，排列为两行四列。
     gw, gh, gx_gap, gy_gap = 256, 62, 14, 12
     gx0, gy0 = W - 72 - 2 * gw - gx_gap, 178
     for i, label in enumerate(c["highlights"]):
@@ -218,7 +217,7 @@ def hero(lang, theme):
               f'<rect x="{x+11}" y="{y+11}" width="40" height="40" rx="9" fill="{t["icon_bg"]}"/>',
               icon(HERO_ICONS[i], x + 19, y + 19, 24, t["gold"], 1.6),
               f'<text x="{x+64}" y="{y+38}" font-family="{sans(lang)}" font-size="20" font-weight="600" fill="{t["ink"]}">{esc(label)}</text>']
-    # trust bar
+    # 信任信息栏。
     o.append(f'<path d="M72 {rule_y}H{W-72}" stroke="{t["rule_soft"]}" stroke-width="2"/>')
     col = (W - 144) / 3
     for i, (ic, label) in enumerate(c["trust"]):
@@ -239,7 +238,7 @@ def cards(lang, theme):
     for ic, label, title, desc, tags in c["cards"]:
         tl = wrap(title, title_size, tw)
         dl = wrap(desc, desc_size, tw)
-        # tag rows
+        # 标签行。
         rows, cur, cur_w = [], [], 0
         for tag in tags:
             w = text_width(tag, 20) + 32
@@ -279,7 +278,7 @@ def cards(lang, theme):
 
 
 # ---------------------------------------------------------------------------
-# Architecture diagram
+# 架构图。
 # ---------------------------------------------------------------------------
 
 HERO_ICONS = ["search", "agent", "wiki", "browser", "sandbox", "plug", "memory", "sources"]
@@ -391,7 +390,7 @@ EYEBROWS = ["01 / ACCESS", "02 / WEKNORA APP", "03 / SERVICES", "04 / STORAGE"]
 
 
 def wrap_sep(s, size, width, sep=" · "):
-    """Wrap at " · " separators first; fall back to wrap() for a segment that is too long on its own."""
+    """优先按分隔符换行；单个片段仍过长时回退到 wrap()。"""
     lines, cur = [], ""
     for seg in s.split(sep):
         cand = seg if not cur else cur + sep + seg
@@ -416,9 +415,9 @@ def architecture(lang, theme):
     c, t = ARCH[lang], THEMES[theme]
     S, M = sans(lang), MONO
     W = 1600
-    ax, aw = 40, 340            # access column
-    cx, cw = 420, 760           # core panel
-    sx, sw = 1220, 340          # services column
+    ax, aw = 40, 340            # 接入列。
+    cx, cw = 420, 760           # 核心面板。
+    sx, sw = 1220, 340          # 服务列。
     top = 40
     item_h, item_gap, items_y = 88, 12, top + 118
     col_h = 118 + 6 * item_h + 5 * item_gap + 26
@@ -455,13 +454,13 @@ def architecture(lang, theme):
     line = lambda d: f'<path d="{d}" fill="none" stroke="{t["gold"]}" stroke-width="2" stroke-linecap="round" opacity=".85"/>'
     dot = lambda x, y: f'<circle cx="{x}" cy="{y}" r="4" fill="{t["gold"]}"/>'
 
-    # 01 access and 03 services
+    # 01 接入与 03 服务。
     panel(ax, top, aw, col_h, EYEBROWS[0], c["heads"][0])
     a_centers = item_list(ax, aw, c["access"])
     panel(sx, top, sw, col_h, EYEBROWS[2], c["heads"][2])
     s_centers = item_list(sx, sw, c["services"])
 
-    # 02 core panel
+    # 02 核心面板。
     panel(cx, top, cw, col_h, EYEBROWS[1], c["heads"][1], meta="GO · GIN · ASYNQ")
     pad, gap = 20, 16
     mw = (cw - 2 * pad - 2 * gap) / 3
@@ -482,7 +481,7 @@ def architecture(lang, theme):
             o.append(f'<text x="{x+20}" y="{my+140+j*30}" font-family="{S}" font-size="20" fill="{t["soft"]}">{esc(l)}</text>')
         mode_centers.append(x + mw / 2)
 
-    # knowledge pipeline, feeding all three modes
+    # 知识处理流水线，为三种模式提供输入。
     py = my + mh + 64
     px, pw = cx + pad, cw - 2 * pad
     ph = 158
@@ -510,7 +509,7 @@ def architecture(lang, theme):
     fit("note", c["pipeline_note"], 17, pw - 40)
     o.append(f'<text x="{px+20}" y="{py+136}" font-family="{S}" font-size="17" fill="{t["mute"]}">{esc(c["pipeline_note"])}</text>')
 
-    # platform capabilities, 2 x 2
+    # 平台能力，排列为两行两列。
     ly = py + ph + 16
     lg = 12
     lh = (top + col_h - 20 - ly - lg) / 2
@@ -527,7 +526,7 @@ def architecture(lang, theme):
             f'<text x="{x+58+nw+14}" y="{y+lh/2+7}" font-family="{S}" font-size="17" fill="{t["soft"]}">{esc(sub)}</text>',
         ])
 
-    # connectors: access -> core, core -> services
+    # 连接线：接入到核心、核心到服务。
     bus_a = ax + aw + 18
     for y in a_centers:
         o.append(line(f"M{ax+aw-20} {y}H{bus_a}"))
@@ -543,7 +542,7 @@ def architecture(lang, theme):
         o.append(line(f"M{bus_s} {y}H{sx+17}"))
         o.append(arrowhead(sx + 17, y, "right"))
 
-    # 04 storage
+    # 04 存储。
     gy = top + col_h + 50
     tx0, tg = ax + 230, 14
     tw = (W - ax - 20 - tx0 - 5 * tg) / 6
@@ -565,7 +564,7 @@ def architecture(lang, theme):
         base = ty + 38 + len(name_lines) * 26 + 8
         for j, l in enumerate(sub_lines):
             o.append(f'<text x="{x+18}" y="{base+j*24}" font-family="{S}" font-size="17" fill="{t["soft"]}">{esc(l)}</text>')
-    # core -> storage
+    # 核心到存储的连接线。
     x0 = cx + cw / 2
     o.append(line(f"M{x0} {top+col_h+3}V{gy+17}"))
     o.append(arrowhead(x0, gy + 17, "down"))
@@ -588,7 +587,7 @@ for lang in COPY:
         open(f"{OUT}/capabilities-{lang}-{theme}.svg", "w").write(cards(lang, theme))
 print("ok")
 
-# Small gold line icons for README tables; the gold reads on both GitHub themes.
+# README 表格使用的小型金色线条图标，在 GitHub 明暗主题下均可辨识。
 TABLE_ICONS = {
     "terminal": '<rect x="2" y="3" width="20" height="18" rx="2"/><path d="m6 8 4 4-4 4m7 0h5"/>',
     "plug": '<path d="M9 2v5m6-5v5M6 7h12v4a6 6 0 0 1-12 0V7Zm6 10v5"/>',

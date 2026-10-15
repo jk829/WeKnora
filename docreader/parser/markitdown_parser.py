@@ -24,11 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 class StdMarkitdownParser(BaseParser):
-    """
-    Standard MarkItDown Parser Wrapper
+    """标准 MarkItDown 解析器封装。
 
-    This parser uses the markitdown library to convert various document formats
-    (docx, pptx, pdf, etc.) into text/markdown.
+    使用 markitdown 库将 DOCX、PPTX、PDF 等格式转换为文本或 Markdown。
     """
 
     def __init__(self, *args, **kwargs):
@@ -37,9 +35,9 @@ class StdMarkitdownParser(BaseParser):
         self.markitdown = MarkItDown()
 
     def parse_into_text(self, content: bytes) -> Document:
-        """
-        Parses content using MarkItDown.
-        Uses self.file_type (inherited from BaseParser) to hint the stream format.
+        """使用 MarkItDown 解析内容。
+
+        通过继承自 BaseParser 的 self.file_type 提示输入流格式。
         """
         ext = self.file_type
         ft = (ext or "").lstrip(".").lower()

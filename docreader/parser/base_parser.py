@@ -11,11 +11,10 @@ logger.setLevel(logging.INFO)
 
 
 class BaseParser(ABC):
-    """Base parser interface.
+    """解析器的抽象接口。
 
-    After the lightweight refactoring, BaseParser only extracts markdown text
-    and raw image references from documents. Chunking, image storage, OCR,
-    and VLM caption are handled by the Go App module.
+    轻量化重构后，BaseParser 只提取 Markdown 文本和原始图片引用。
+    分块、图片存储、OCR 和视觉语言模型（VLM）图片描述由 Go 应用负责。
     """
 
     def __init__(
@@ -35,17 +34,17 @@ class BaseParser(ABC):
 
     @abstractmethod
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse document content into markdown text.
+        """将文档字节内容解析为 Markdown 文本。
 
-        Returns:
-            Document with ``content`` (markdown string) and optional
-            ``images`` dict mapping storage-relative paths to base64 data.
+        返回：
+            Document，其中 content 为 Markdown 字符串；可选的 images 字典
+            将相对存储路径映射到 Base64 图片数据。
         """
 
     def parse(self, content: bytes) -> Document:
-        """Parse document and return markdown + image references.
+        """解析文档并返回 Markdown 正文与图片引用。
 
-        No chunking, no OCR, no VLM caption — those are done in Go.
+        分块、OCR 和 VLM 图片描述均交由 Go 端处理。
         """
         logger.info(
             "Parsing document with %s, bytes: %d",

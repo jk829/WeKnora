@@ -1,10 +1,7 @@
-"""Token splitter.
+"""文本分块模块。
 
-This module provides text splitting functionality with support for:
-- Configurable chunk size and overlap
-- Protected regex patterns (e.g., math formulas, images, links, tables)
-- Header tracking for context preservation
-- Smart merging with overlap handling
+支持配置分块长度和重叠、通过正则保护公式/图片/链接/表格等内容，
+跟踪标题以保留上下文，并在合并时处理重叠。
 """
 
 import itertools
@@ -20,12 +17,12 @@ from docreader.splitter.header_hook import (
 )
 from docreader.utils.split import split_by_char, split_by_sep
 
-# Default configuration for text chunking
-# Aligned with internal/infrastructure/chunker/splitter.go (DefaultChunkOverlap = 80,
-# DefaultChunkSize = 512). The Go splitter is now the production path; this
-# Python splitter is kept for the docreader sidecar where it's still used.
-DEFAULT_CHUNK_OVERLAP = 80  # Number of characters to overlap between chunks (~15% of chunk size)
-DEFAULT_CHUNK_SIZE = 512  # Maximum size of each chunk in characters
+# 文本分块的默认配置。
+# 与 internal/infrastructure/chunker/splitter.go 对齐：DefaultChunkOverlap = 80，
+# DefaultChunkSize = 512。生产环境使用 Go 分块器；
+# 此 Python 实现保留供仍依赖它的 docreader 边车使用。
+DEFAULT_CHUNK_OVERLAP = 80  # 相邻分块的重叠字符数，约为分块长度的 15%。
+DEFAULT_CHUNK_SIZE = 512  # 每个分块的最大字符数。
 
 T = TypeVar("T")
 
@@ -33,13 +30,10 @@ logger = logging.getLogger(__name__)
 
 
 class TextSplitter(BaseModel, Generic[T]):
-    """Text splitter with support for protected patterns and header tracking.
+    """支持保护模式和标题跟踪的文本分块器。
 
-    This class splits text into chunks while:
-    - Respecting chunk size and overlap constraints
-    - Preserving protected patterns (formulas, tables, code blocks)
-    - Tracking headers for context preservation
-    - Maintaining text integrity with smart merging
+    在遵守块大小与重叠约束的同时，尽量保留公式、表格、代码块等结构，
+    通过跟踪标题和合并片段保持上下文与文本完整性。
     """
 
     chunk_size: int = Field(description="The token chunk size for each chunk.")
@@ -50,20 +44,20 @@ class TextSplitter(BaseModel, Generic[T]):
         description="Default separators for splitting into words"
     )
 
-    # Try to keep the matched characters as a whole.
-    # If it's too long, the content will be further segmented.
+    # 尽量保持正则匹配的内容完整。
+    # 内容过长时仍会进一步切分。
     # 尝试将匹配的字符作为整体保留，如果太长则进一步分段
     protected_regex: List[str] = Field(
         description="Protected regex for splitting into words"
     )
     len_function: Callable[[str], int] = Field(description="The length function.")
-    # Header tracking Hook related attributes
+    # 标题跟踪钩子的相关属性。
     # 标题跟踪钩子相关属性
     header_hook: HeaderTracker = Field(default_factory=HeaderTracker, exclude=True)
 
-    # Compiled regex patterns for protected content
+    # 用于保护特殊内容的预编译正则模式。
     _protected_fns: List[Pattern] = PrivateAttr()
-    # Split functions for different separators
+    # 针对不同分隔符的切分函数。
     _split_fns: List[Callable] = PrivateAttr()
 
     def __init__(
@@ -72,32 +66,32 @@ class TextSplitter(BaseModel, Generic[T]):
         chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
         separators: List[str] = ["\n", "。", " "],
         protected_regex: List[str] = [
-            # math formula - LaTeX style formulas enclosed in $$
+            # 数学公式：由 $$ 包围的 LaTeX 公式。
             r"\$\$[\s\S]*?\$\$",
-            # image - Markdown image syntax ![alt](url)
+            # 图片：Markdown 图片语法 ![alt](url)。
             r"!\[.*?\]\(.*?\)",
-            # link - Markdown link syntax [text](url)
+            # 链接：Markdown 链接语法 [text](url)。
             r"\[.*?\]\(.*?\)",
-            # table header - Markdown table header with separator line
+            # 表头：包含分隔行的 Markdown 表头。
             r"[ ]*(?:\|[^|\n]*)+\|[\r\n]+\s*(?:\|\s*:?-{3,}:?\s*)+\|[\r\n]+",
-            # table body - Markdown table rows
+            # 表格正文：Markdown 表格数据行。
             r"[ ]*(?:\|[^|\n]*)+\|[\r\n]+",
-            # code header - Code block start with language identifier
+            # 代码块头：包含语言标识的代码块起始行。
             r"```(?:\w+)[\r\n]+[^\r\n]*",
         ],
         length_function: Callable[[str], int] = lambda x: len(x),
     ):
-        """Initialize with parameters.
+        """初始化分块参数。
 
-        Args:
-            chunk_size: Maximum size of each chunk
-            chunk_overlap: Number of tokens to overlap between chunks
-            separators: List of separators to use for splitting (in priority order)
-            protected_regex: Regex patterns for content that should be kept intact
-            length_function: Function to calculate text length (default: character count)
+        参数：
+            chunk_size: 每个分块的最大长度。
+            chunk_overlap: 相邻分块的重叠长度，单位由 length_function 决定。
+            separators: 按优先级排列的分隔符列表。
+            protected_regex: 应尽量保持完整的内容正则模式。
+            length_function: 长度计算函数，默认按字符数计算。
 
-        Raises:
-            ValueError: If chunk_overlap is larger than chunk_size
+        异常：
+            ValueError: chunk_overlap 大于 chunk_size。
         """
         if chunk_overlap > chunk_size:
             raise ValueError(
@@ -112,119 +106,111 @@ class TextSplitter(BaseModel, Generic[T]):
             protected_regex=protected_regex,
             len_function=length_function,
         )
-        # Compile all protected regex patterns for efficient matching
+        # 预编译所有保护模式，提高匹配效率。
         self._protected_fns = [re.compile(reg) for reg in protected_regex]
-        # Create split functions: one for each separator, plus character-level splitting as fallback
+        # 为每个分隔符创建切分函数，最后以逐字符切分兜底。
         self._split_fns = [split_by_sep(sep) for sep in separators] + [split_by_char()]
 
     def split_text(self, text: str) -> List[Tuple[int, int, str]]:
-        """Split text into chunks with overlap and protected pattern handling.
+        """切分文本，处理重叠并保护匹配的结构。
 
-        Args:
-            text: The input text to split
+        参数：
+            text: 输入文本。
 
-        Returns:
-            List of tuples (start_pos, end_pos, chunk_text) representing each chunk
+        返回：
+            (起始位置, 结束位置, 分块文本) 元组列表。
         """
         if text == "":
             return []
 
-        # Step 1: Split text by separators recursively
+        # 步骤 1：按分隔符递归切分文本。
         splits = self._split(text)
-        # Step 2: Extract protected content positions
+        # 步骤 2：提取受保护内容的位置。
         protect = self._split_protected(text)
-        # Step 3: Merge splits with protected content to ensure integrity
+        # 步骤 3：调整片段边界，保持受保护内容完整。
         splits = self._join(splits, protect)
 
-        # Verify that joining all splits reconstructs the original text
+        # 确认拼接所有片段后可以重建原文。
         assert "".join(splits) == text
 
-        # Step 4: Merge splits into final chunks with overlap
+        # 步骤 4：将片段合并为带重叠的最终分块。
         chunks = self._merge(splits)
 
-        # Step 5: Validate chunks and test restoration
+        # 步骤 5：校验分块并测试原文还原能力。
         # self._validate_chunks(chunks, text)
 
         return chunks
 
     def _split(self, text: str) -> List[str]:
-        """Break text into splits that are smaller than chunk size.
+        """按分隔符优先级递归切分，使片段小于块长度限制。
 
-        This method recursively splits text using separators in priority order.
-        It tries each separator until it finds one that can split the text,
-        then recursively processes any splits that are still too large.
+        依次尝试分隔符，找到可切分的方式后，递归处理仍然过长的片段。
+        切分结果保留分隔符。
 
-        NOTE: the splits contain the separators.
+        参数：
+            text: 待切分文本。
 
-        Args:
-            text: The text to split
-
-        Returns:
-            List of text splits, each smaller than chunk_size
+        返回：
+            每项长度小于 chunk_size 的片段列表。
         """
-        # If text is already small enough, return as-is
+        # 文本已足够短时直接返回。
         if self.len_function(text) <= self.chunk_size:
             return [text]
 
-        # Try each split function in order until one successfully splits the text
+        # 按优先级尝试各切分函数，直到成功切分。
         splits = []
         for split_fn in self._split_fns:
             splits = split_fn(text)
             if len(splits) > 1:
                 break
 
-        # Process each split: keep if small enough, otherwise recursively split further
+        # 保留足够短的片段，对过长片段递归切分。
         new_splits = []
         for split in splits:
             split_len = self.len_function(split)
             if split_len <= self.chunk_size:
                 new_splits.append(split)
             else:
-                # Recursively split oversized chunks
+                # 递归切分超过大小限制的片段。
                 new_splits.extend(self._split(split))
         return new_splits
 
     def _merge(self, splits: List[str]) -> List[Tuple[int, int, str]]:
-        """Merge splits into chunks with overlap and header tracking.
+        """将片段合并为带重叠和标题上下文的分块。
 
-        The high-level idea is to keep adding splits to a chunk until we
-        exceed the chunk size, then we start a new chunk with overlap.
+        持续添加片段，达到大小限制时开启新块，并保留上一块末尾的重叠。
+        通过移除旧块前部片段控制长度，同时跟踪标题并在需要时补到新块开头。
 
-        When we start a new chunk, we pop off the first element of the previous
-        chunk until the total length is less than the chunk size.
+        参数：
+            splits: 待合并的文本片段列表。
 
-        Headers are tracked and prepended to chunks for context preservation.
-
-        Args:
-            splits: List of text splits to merge
-
-        Returns:
-            List of tuples (start_pos, end_pos, chunk_text) representing merged chunks
+        返回：
+            (起始位置, 结束位置, 分块文本) 元组列表。
         """
-        # Final list of chunks with their positions
+        # 记录最终分块及其位置。
         chunks: List[Tuple[int, int, str]] = []
 
-        # Current chunk being built: list of (start, end, text) tuples
+        # 当前正在构建的分块，由 (起始位置, 结束位置, 文本) 元组组成。
         cur_chunk: List[Tuple[int, int, str]] = []
 
-        # Track current headers and chunk length
+        # 跟踪当前标题及分块长度。
         cur_headers, cur_len = "", 0
-        # Track position in original text
+        # 跟踪在原文中的位置。
         cur_start, cur_end = 0, 0
 
         for split in splits:
-            # Calculate position of current split in original text
+            # 计算当前片段在原文中的位置。
             cur_end = cur_start + len(split)
             split_len = self.len_function(split)
 
-            # Warn if a single split exceeds chunk size (shouldn't happen after _split)
+            # 单个片段仍超限时记录警告，正常情况下 _split 后不应出现。
             if split_len > self.chunk_size:
                 logger.error(
                     f"Got a split of size {split_len}, ",
                     f"larger than chunk size {self.chunk_size}.",
                 )
 
-            # Update header tracking with current split
+            # 使用当前片段更新标题跟踪状态。
             self.header_hook.update(split)
             if self.header_hook.header_ended_this_unit and len(cur_chunk) > 0:
                 chunks.append(
@@ -239,7 +225,7 @@ class TextSplitter(BaseModel, Generic[T]):
             cur_headers = self.header_hook.get_headers()
             cur_headers_len = self.len_function(cur_headers)
 
-            # If headers are too large, skip them to avoid oversized chunks
+            # 标题自身过长时跳过，避免分块超过限制。
             if cur_headers_len > self.chunk_size:
                 logger.error(
                     f"Got headers of size {cur_headers_len}, ",
@@ -247,42 +233,42 @@ class TextSplitter(BaseModel, Generic[T]):
                 )
                 cur_headers, cur_headers_len = "", 0
 
-            # Check if adding this split would exceed chunk size
-            # If so, finalize current chunk and start a new one with overlap
+            # 检查加入当前片段后是否超过块大小限制。
+            # 若超限，则结束当前块，并保留重叠内容创建新块。
             if cur_len + split_len + cur_headers_len > self.chunk_size:
-                # Finalize the previous chunk if it has content
+                # 当前块有内容时，将其加入结果。
                 if len(cur_chunk) > 0:
                     chunks.append(
                         (
-                            cur_chunk[0][0],  # Start position of first element
-                            cur_chunk[-1][1],  # End position of last element
-                            "".join([c[2] for c in cur_chunk]),  # Concatenated text
+                            cur_chunk[0][0],  # 首个元素的起始位置。
+                            cur_chunk[-1][1],  # 最后一个元素的结束位置。
+                            "".join([c[2] for c in cur_chunk]),  # 拼接后的文本。
                         )
                     )
 
-                # Start a new chunk with overlap from previous chunk
-                # Keep popping off the first element of the previous chunk until:
-                #   1. the current chunk length is less than chunk overlap
-                #   2. the total length is less than chunk size
+                # 保留上一块末尾的重叠内容，开始新分块。
+                # 持续移除旧分块的首元素，直到同时满足：
+                # 1. 当前块长度小于重叠长度；
+                # 2. 总长度小于块大小限制。
                 while cur_chunk and (
                     cur_len > self.chunk_overlap
                     or cur_len + split_len + cur_headers_len > self.chunk_size
                 ):
-                    # Remove the first element to reduce overlap.
-                    # If the first element is a prepended header (start==end), also remove it.
+                    # 移除首元素以缩小重叠范围。
+                    # 若首元素是补充的标题（start==end），也将其移除。
                     first_chunk = cur_chunk.pop(0)
                     cur_len -= self.len_function(first_chunk[2])
 
-                    # If we just popped a real content piece, there may be a header right after it
-                    # (depending on previous iterations). Pop it only if it is actually a header.
+                    # 弹出真实正文后，其后可能紧跟补充的标题，
+                    # 具体取决于之前的迭代；确认是标题后才一并弹出。
                     if cur_chunk and first_chunk[0] == first_chunk[1]:
                         first_chunk = cur_chunk.pop(0)
                         cur_len -= self.len_function(first_chunk[2])
 
-                # Prepend headers to new chunk if:
-                # 1. Headers exist
-                # 2. Headers + split fit in chunk size
-                # 3. Headers are not already in the split
+                # 满足以下条件时，在新块开头补充标题：
+                # 1. 存在标题；
+                # 2. 标题和片段总长度不超过块大小限制；
+                # 3. 当前片段尚未包含这些标题。
                 if (
                     cur_headers
                     and split_len + cur_headers_len < self.chunk_size
@@ -294,12 +280,12 @@ class TextSplitter(BaseModel, Generic[T]):
                     cur_chunk.insert(0, (next_start, next_start, cur_headers))
                     cur_len += cur_headers_len
 
-            # Add current split to the chunk
+            # 将当前片段加入分块。
             cur_chunk.append((cur_start, cur_end, split))
             cur_len += split_len
             cur_start = cur_end
 
-        # Handle the last chunk (there should always be at least one)
+        # 处理最后一个分块，正常情况下至少存在一个。
         assert cur_chunk
         chunks.append(
             (
@@ -312,135 +298,121 @@ class TextSplitter(BaseModel, Generic[T]):
         return chunks
 
     def _split_protected(self, text: str) -> List[Tuple[int, str]]:
-        """Extract protected content from text based on regex patterns.
+        """按正则模式提取需要保护的文本。
 
-        Args:
-            text: The input text to scan for protected patterns
+        参数：
+            text: 待扫描文本。
 
-        Returns:
-            List of tuples (start_position, protected_text) for each protected match
+        返回：
+            各匹配项的 (起始位置, 受保护文本) 元组列表。
         """
-        # Find all matches for all protected patterns
+        # 查找全部保护模式的匹配项。
         matches = [
             (match.start(), match.end())
             for pattern in self._protected_fns
             for match in pattern.finditer(text)
         ]
-        # Sort by start position (ascending), then by length (descending) to handle overlaps
+        # 先按起点升序、再按长度降序排序，以处理重叠匹配。
         matches.sort(key=lambda x: (x[0], -x[1]))
 
         res = []
 
         def fold(initial: int, current: Tuple[int, int]) -> int:
-            """Accumulator function to filter overlapping matches."""
-            # Only process if match starts after previous match ended
+            """供累积计算使用的函数，用于过滤重叠匹配。"""
+            # 仅处理起点不早于上一匹配终点的项。
             if current[0] >= initial:
-                # Only keep protected content if it fits within chunk size
+                # 仅保护长度不超过块大小限制的内容。
                 if current[1] - current[0] < self.chunk_size:
                     res.append((current[0], text[current[0] : current[1]]))
                 else:
                     logger.warning(f"Protected text ignore: {current}")
-            # Return the end position of the furthest match so far
+            # 返回目前匹配到的最远结束位置。
             return max(initial, current[1])
 
-        # Filter overlapping matches using accumulate
+        # 使用 accumulate 过滤重叠匹配。
         list(itertools.accumulate(matches, fold, initial=-1))
         return res
 
     def _join(self, splits: List[str], protect: List[Tuple[int, str]]) -> List[str]:
-        """Merge splits with protected content to ensure protected patterns remain intact.
+        """调整片段边界，确保受保护内容作为完整的独立片段。
 
-        Merges and splits elements in splits array based on protected substrings.
+        根据受保护子串合并或拆分原片段，将它们与相邻普通文本分离，
+        处理部分粘连的情况，同时保持所有内容的原始顺序。
 
-        The function processes the input splits to ensure all protected substrings
-        remain as single items. If a protected substring is concatenated with preceding
-        or following content in any split element, it will be separated from
-        the adjacent content. The final result maintains the original order of content
-        while enforcing the integrity of protected substrings.
+        参数：
+            splits: _split() 返回的文本片段列表。
+            protect: 受保护内容的 (位置, 文本) 列表。
 
-        Key behaviors:
-        1. Preserves the complete structure of each protected substring
-        2. Separates protected substrings from any adjacent non-protected content
-        3. Maintains the original sequence of all content
-        4. Handles cases where protected substrings are partially concatenated
-
-        Args:
-            splits: List of text splits from _split()
-            protect: List of (position, text) tuples for protected content
-
-        Returns:
-            List of text splits with protected content properly isolated
+        返回：
+            已隔离受保护内容的片段列表。
         """
-        j = 0  # Index for protected content list
-        point, start = 0, 0  # Track current position in original text
-        res = []  # Result list of merged splits
+        j = 0  # 受保护内容列表的索引。
+        point, start = 0, 0  # 跟踪当前在原文中的位置。
+        res = []  # 合并后的片段结果列表。
 
         for split in splits:
-            # Calculate end position of current split
+            # 计算当前片段的结束位置。
             end = start + len(split)
 
-            # Get the portion of split starting from current point
+            # 获取当前片段从游标开始的剩余内容。
             cur = split[point - start :]
 
-            # Process all protected content that overlaps with current split
+            # 处理与当前片段重叠的所有受保护内容。
             while j < len(protect):
                 p_start, p_content = protect[j]
                 p_end = p_start + len(p_content)
 
-                # If protected content is beyond current split, move to next split
+                # 受保护内容位于当前片段之后时，继续下一个片段。
                 if end <= p_start:
                     break
 
-                # Add content before protected section
+                # 添加受保护区域前面的普通内容。
                 if point < p_start:
                     local_end = p_start - point
                     res.append(cur[:local_end])
                     cur = cur[local_end:]
                     point = p_start
 
-                # Add the protected content as a single unit
+                # 将受保护内容作为一个完整单元添加。
                 res.append(p_content)
                 j += 1
 
-                # Skip content that's part of the protected section
+                # 跳过已归入受保护区域的内容。
                 if point < p_end:
                     local_start = p_end - point
                     cur = cur[local_start:]
                     point = p_end
 
-                # If no more content in current split, break
+                # 当前片段已处理完时退出循环。
                 if not cur:
                     break
 
-            # Add any remaining content from current split
+            # 添加当前片段剩余的普通内容。
             if cur:
                 res.append(cur)
                 point = end
 
-            # Move to next split
+            # 继续处理下一个片段。
             start = end
         return res
 
     def _validate_chunks(
         self, chunks: List[Tuple[int, int, str]], original_text: str
     ) -> None:
-        """Validate chunks order and test text restoration.
+        """校验分块顺序，并测试能否还原原文。
 
-        This method performs two validations:
-        1. Checks if chunk start positions are in ascending order
-        2. Tests if the original text can be restored from chunks
+        检查起始位置是否递增，以及能否从分块恢复原文。
+        失败时将调试信息保存到 /tmp/chunk_error_<timestamp>.md。
 
-        If validation fails, saves debug information to /tmp/chunk_error_<timestamp>.md
-
-        Args:
-            chunks: List of tuples (start_pos, end_pos, chunk_text) to validate
-            original_text: The original text that was split
+        参数：
+            chunks: 待校验的 (起始位置, 结束位置, 文本) 列表。
+            original_text: 切分前的原文。
         """
         import datetime
 
         errors = []
 
-        # Validation 1: Check if start positions are in ascending order
+        # 校验 1：检查起始位置是否递增。
         for i in range(1, len(chunks)):
             prev_start = chunks[i - 1][0]
             curr_start = chunks[i][0]
@@ -452,7 +424,7 @@ class TextSplitter(BaseModel, Generic[T]):
                 errors.append(error_msg)
                 logger.error(error_msg)
 
-        # Validation 2: Test text restoration
+        # 校验 2：测试原文还原。
         try:
             restored_text = self.restore_text(chunks)
             if restored_text != original_text:
@@ -464,7 +436,7 @@ class TextSplitter(BaseModel, Generic[T]):
                 errors.append(error_msg)
                 logger.error(error_msg)
 
-                # Find first difference position
+                # 查找首个差异位置。
                 min_len = min(len(original_text), len(restored_text))
                 diff_pos = -1
                 for i in range(min_len):
@@ -489,7 +461,7 @@ class TextSplitter(BaseModel, Generic[T]):
             errors.append(error_msg)
             logger.error(error_msg)
 
-        # If there are errors, save debug information to file
+        # 发现错误时，将调试信息保存到文件。
         if errors:
             timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             error_file = f"/tmp/chunk_error_{timestamp}.md"
@@ -530,25 +502,18 @@ class TextSplitter(BaseModel, Generic[T]):
             logger.error(f"Validation errors saved to: {error_file}")
 
     def restore_text(self, chunks: List[Tuple[int, int, str]]) -> str:
-        """Restore original text from chunks with overlap handling.
+        """处理重叠和补充标题，从分块还原原文。
 
-        This method reconstructs the original text from chunks that may contain:
-        - Overlapping content between consecutive chunks
-        - Prepended headers that were added during merging (headers have start==end position)
+        按起始位置排序，结束位置用于同起点排序；跟踪已处理的最大结束位置，
+        每块只提取尚未出现的正文后拼接。合并阶段补充的标题位置满足 start==end。
 
-        The algorithm:
-        1. Sort chunks by their start position (and end position as tiebreaker)
-        2. Track the maximum end position seen so far
-        3. For each chunk, extract only the new content (after max_end_pos)
-        4. Concatenate all new content pieces
+        参数：
+            chunks: split_text() 返回的 (起始位置, 结束位置, 文本) 列表。
 
-        Args:
-            chunks: List of tuples (start_pos, end_pos, chunk_text) from split_text()
+        返回：
+            还原后的原文。
 
-        Returns:
-            The restored original text
-
-        Example:
+        示例：
             >>> splitter = TextSplitter(chunk_size=10, chunk_overlap=3)
             >>> chunks = splitter.split_text("Hello World!")
             >>> restored = splitter.restore_text(chunks)
@@ -557,7 +522,7 @@ class TextSplitter(BaseModel, Generic[T]):
         if not chunks:
             return ""
 
-        # Sort chunks by start position, then by end position
+        # 按起始位置排序，起点相同时再按结束位置排序。
         sorted_chunks = sorted(chunks, key=lambda x: (x[1], x[0]))
 
         result_parts = []

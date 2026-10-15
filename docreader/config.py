@@ -8,7 +8,7 @@ logger.setLevel(logging.INFO)
 
 
 def _get_first_env(keys: Iterable[str]) -> Tuple[Optional[str], Optional[str]]:
-    """Return (value, key) for the first existing env var in keys."""
+    """按 keys 顺序返回首个已设置环境变量的 (值, 键名)。"""
     for k in keys:
         if k in os.environ:
             return os.environ.get(k), k
@@ -47,12 +47,12 @@ def _mask_secret(v: str) -> str:
 
 @dataclass(frozen=True)
 class DocReaderConfig:
-    # gRPC
+    # gRPC 服务配置。
     grpc_max_workers: int
     grpc_max_file_size_mb: int
     grpc_port: int
 
-    # Parser
+    # 解析器配置。
     docx_max_pages: int
     markitdown_max_workers: int
     odl_max_workers: int
@@ -67,16 +67,16 @@ class DocReaderConfig:
     pdf_jpeg_quality: int
     pdf_render_max_edge: int
 
-    # Proxy
+    # 代理配置。
     external_http_proxy: str
     external_https_proxy: str
 
-    # Temp image output directory (shared with Go app via volume, local mode fallback)
+    # 临时图片输出目录：通过挂载卷与 Go 应用共享，作为本地模式的回退路径。
     image_output_dir: str
 
 
 def load_config() -> DocReaderConfig:
-    """Load config from environment variables (lightweight version)."""
+    """从环境变量加载轻量化配置。"""
 
     grpc_max_workers = _get_int(["DOCREADER_GRPC_MAX_WORKERS", "GRPC_MAX_WORKERS"], 4)
     grpc_max_file_size_mb = (
@@ -99,22 +99,22 @@ def load_config() -> DocReaderConfig:
         ["DOCREADER_ODL_MARKDOWN_WITH_HTML"], False
     )
     pdf_render_max_workers = _get_int(["DOCREADER_PDF_RENDER_MAX_WORKERS"], 1)
-    # Intra-document render parallelism: how many worker processes render the
-    # scanned pages of a SINGLE PDF in parallel. pdfium is not thread-safe, so
-    # page rendering is fanned out across processes (each opens its own
-    # document). A large scanned PDF rendered serially can take >1h on
-    # CPU-constrained containers; this is the main lever to cut that wall time.
-    # Default scales with CPU count but is capped so we don't oversubscribe.
+    # 单文档渲染并行度：控制同一个 PDF 的扫描页
+    # 由多少个工作进程并行渲染。pdfium 不支持线程安全，
+    # 因此使用多个进程，每个进程单独打开
+    # 文档。在 CPU 受限的容器中，大型扫描 PDF 串行渲染可能超过一小时，
+    # 提高此并行度是缩短总耗时的主要手段。
+    # 默认值随 CPU 数量变化，但设置上限以避免资源过度占用。
     _cpu = os.cpu_count() or 1
     pdf_render_parallelism = _get_int(
         ["DOCREADER_PDF_RENDER_PARALLELISM"], max(1, min(4, _cpu))
     )
     pdf_render_dpi = _get_int(["DOCREADER_PDF_RENDER_DPI"], 200)
     pdf_jpeg_quality = _get_int(["DOCREADER_PDF_JPEG_QUALITY"], 85)
-    # Cap the long edge (px) of rendered/extracted page images. Without this,
-    # PDFs declaring very large page boxes render to 100+ MP JPEGs that blow the
-    # gRPC message limit (and are far higher-res than OCR needs). ~2000px keeps
-    # dense CJK text legible for OCR while keeping page images well under ~1MB.
+    # 限制渲染或提取的页面图片长边像素数。否则，
+    # 页面尺寸异常大的 PDF 可能生成上亿像素的 JPEG，
+    # 超过 gRPC 消息上限，且分辨率远超 OCR 所需。约 2000 像素
+    # 可保留密集中日韩文字的可读性，同时让页面图片通常小于约 1 MB。
     pdf_render_max_edge = _get_int(["DOCREADER_PDF_RENDER_MAX_EDGE"], 2000)
 
     external_http_proxy = _get_str(

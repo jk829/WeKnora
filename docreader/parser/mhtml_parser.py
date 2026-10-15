@@ -1,6 +1,6 @@
-"""MHTML parser.
+"""MHTML 解析模块。
 
-Parses MIME HTML web archives into markdown text and optional embedded images.
+将 MIME HTML 网页归档转换为 Markdown 文本，并按需提取内嵌图片。
 """
 
 import base64
@@ -50,14 +50,12 @@ _WHITESPACE_DROPPING_INLINE_TAGS = (
 
 
 def _header_str(value) -> str:
-    """Normalize a MIME header to str, recovering 8-bit UTF-8 bytes.
+    """将 MIME 头规范化为字符串，并恢复其中的 8 位 UTF-8 字节。
 
-    ``email.message_from_bytes`` uses compat32 by default. Browser-saved
-    ``.mhtml`` files often store raw UTF-8 in headers such as Content-Location.
-    Those values come back as ``email.header.Header`` with charset
-    ``unknown-8bit``: ``.strip()`` / ``.lower()`` raise AttributeError, and
-    ``str(Header)`` replaces the bytes with U+FFFD so image aliases no longer
-    match the HTML body.
+    email.message_from_bytes 默认使用 compat32。浏览器保存的 MHTML
+    常在 Content-Location 等头字段直接写入 UTF-8，读取后成为字符集为
+    unknown-8bit 的 email.header.Header。直接调用 strip()/lower() 会报
+    AttributeError；str(Header) 则会将字节替换为 U+FFFD，导致图片别名无法匹配正文。
     """
     if value is None:
         return ""
@@ -94,7 +92,7 @@ def _header_str(value) -> str:
 
 
 class MHTMLParser(BaseParser):
-    """Parser for MHTML web archives."""
+    """MHTML 网页归档解析器。"""
 
     def __init__(self, *args, extract_images: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,7 +160,7 @@ class MHTMLParser(BaseParser):
         return Document(content=markdown_text, images=images, metadata=metadata)
 
     def _select_main_html(self, html_parts) -> dict:
-        """Pick the largest non-ad HTML part as the main document body."""
+        """选择最大的非广告 HTML 部件作为主文档正文。"""
         if not html_parts:
             return {}
 
@@ -192,7 +190,7 @@ class MHTMLParser(BaseParser):
     def _add_image_aliases(
         image_aliases: Dict[str, str], part, image_path: str
     ) -> None:
-        """Register the refs an MHTML document may use for an image part."""
+        """注册 MHTML 文档引用图片部件时可能使用的路径别名。"""
         for raw in (
             part.get("Content-Location", ""),
             part.get("Content-ID", ""),
@@ -226,7 +224,7 @@ class MHTMLParser(BaseParser):
     def _image_path_for_part(
         cls, part, content_type: str, images: Dict[str, str]
     ) -> str:
-        """Choose a stable image path when the MHTML part exposes a filename."""
+        """图片部件提供文件名时，生成稳定的图片路径。"""
         ext = cls._image_extension(content_type)
         location = _header_str(part.get("Content-Location", "")).strip()
         filename = cls._filename_from_content_location(location)
@@ -270,7 +268,7 @@ class MHTMLParser(BaseParser):
         strip_internal_links: bool = True,
         fallback_to_raw_html: bool = True,
     ) -> str:
-        """Convert HTML to Markdown with explicit link and fallback policies."""
+        """按明确的链接处理和回退策略，将 HTML 转为 Markdown。"""
 
         def raw_html_fallback() -> str:
             if not fallback_to_raw_html:
@@ -310,17 +308,17 @@ class MHTMLParser(BaseParser):
         image_aliases: Dict[str, str] | None = None,
         base_location: str = "",
     ) -> str:
-        """Backward-compatible wrapper for existing internal callers and tests."""
+        """为已有内部调用和测试保留的兼容封装。"""
         return self.html_to_markdown(html_content, image_aliases, base_location)
 
     @staticmethod
     def _unwrap_whitespace_only_inline(soup: BeautifulSoup) -> None:
-        """Keep the whitespace held by an otherwise empty inline element.
+        """保留仅含空白的行内元素中的空白字符。
 
-        markdownify drops such an element together with its whitespace, so
-        ``further<strong> </strong>reference`` became ``furtherreference``.
-        Unwrapping leaves the whitespace as plain text. Innermost elements go
-        first, so ``<b><i> </i></b>`` is unwrapped completely.
+        markdownify 会将这类元素连同空白一起删除，导致
+        further<strong> </strong>reference 变为 furtherreference。
+        移除元素包装可将空白保留为纯文本。先处理最内层元素，确保
+        <b><i> </i></b> 等嵌套结构被完全展开。
         """
         for tag in reversed(soup.find_all(_WHITESPACE_DROPPING_INLINE_TAGS)):
             if tag.find(True) is None and not tag.get_text().strip():
@@ -393,7 +391,7 @@ class MHTMLParser(BaseParser):
 
     @staticmethod
     def _strip_internal_links(soup: BeautifulSoup) -> None:
-        """Unwrap links that don't point to an external resource."""
+        """移除非外部资源链接的包装，保留其文字。"""
         external = ("http://", "https://", "mailto:", "tel:")
         for link in soup.find_all("a"):
             href = (link.get("href") or "").strip().lower()

@@ -1,42 +1,26 @@
-"""Verify that an installed skill's Python sources are well-formed in this image.
+"""验证镜像中已安装技能的 Python 源码是否有效。
 
-Run inside the sandbox, by the interpreter a real skill call would use, as the
-ordinary execution user, after the tree has been given its final permissions:
-
+在目录权限设置完成后，以普通执行用户在沙箱中运行，使用实际调用技能的解释器：
     python3 - <skill-dir> <script> [<script> ...] [--optional <script> ...]
 
-Nothing here executes the skill's own code, and nothing here decides whether an
-import will resolve.
+此过程不执行技能代码，也不判断导入是否可解析。导入检查已刻意移除：
+脚本可能通过条件插入、同级模块常量、环境变量或辅助函数修改 sys.path，
+静态分析无法穷举，近似判断会拒绝实际可运行的技能。拒绝安装会丢弃已经成功的
+依赖安装，并继续使用旧镜像。安装智能体拥有 root shell 和真实解释器，
+应由它执行导入来验证，而不是在这里猜测。
 
-Import resolution used to live in this file, and it is gone on purpose. Whether
-`import helper` works depends on what the script does to sys.path before it
-runs — an idiom no static evaluator can enumerate: a guarded insert, a path
-constant imported from a sibling module, a value read from the environment, a
-mutation inside a helper function. Every approximation of that rejected skills
-that run perfectly, and a rejected install throws away the dependency work that
-succeeded and leaves the previous image serving. The installer agent has a root
-shell and the real interpreter, so proving an import resolves is its job: it can
-run the import instead of guessing at it.
+这里只检查文件层面可以确定的事项：执行用户能否读取所有源码、源码能否解析，
+以及清单中声明的发行包是否已安装到虚拟环境。
 
-What remains is what a file, not a runtime, can settle:
+诊断结果分级：
+    stdout 的 note: 行仅作提示，保留镜像。
+    stderr 的问题行会拒绝安装。
+    退出码 0：可以保留镜像。
+    退出码 1：存在无法通过安装包解决的问题，如语法错误或源码不可读。
+    退出码 2：全部问题均为缺失依赖，可再交给安装智能体修复一轮。
 
-    - the execution user can read every source file
-    - every source file parses
-    - every distribution the manifests name is installed in the venv
-
-Findings are graded, because rejecting an install is expensive.
-
-    stdout  `note: ...` lines - reported, image kept
-    stderr  problem lines - the install is refused
-    exit 0  the image may be kept
-    exit 1  a problem no installer round can fix: a syntax error, or a file the
-            execution user cannot read
-    exit 2  every problem is a dependency missing from this image, so handing
-            these lines back to the installer is worth a round
-
-Files named after --optional are checked identically, but their findings are
-notes: nothing the skill offers loads a test or an example, and a bundled
-tests/ directory must not decide whether the skill installs.
+--optional 之后的文件接受相同检查，但问题仅作为提示。技能正常执行不应加载
+测试或示例，随包附带的 tests/ 目录不应决定安装是否成功。
 """
 
 import ast
@@ -61,13 +45,13 @@ else:
 all_scripts = entry_scripts + optional_scripts
 optional_set = set(optional_scripts)
 
-# problems refuse the install; notes are reported and the image is kept.
+# 问题会拒绝安装；提示仅报告，仍保留镜像。
 problems = []
 notes = []
 
-# Whether any problem is something installing a package cannot fix. It decides
-# the exit code, which is how the caller knows if another installer round could
-# help or if the bundle itself has to change.
+# 记录是否存在无法通过安装依赖解决的问题。该状态
+# 决定退出码，供调用方判断再执行一轮安装是否
+# 有帮助，或是否必须修改技能包本身。
 unrepairable = False
 
 
@@ -85,20 +69,18 @@ def add_note(message):
 
 
 def note_instead_of_problem(message, repairable=False):
-    """Reporter for an auxiliary file: the finding is real, the verdict is not.
+    """报告辅助文件的检查结果，但不影响安装结论。
 
-    repairable is accepted and ignored so this can stand in for add_problem;
-    a note never influences the exit code.
+    为兼容 add_problem 接口接收 repairable 参数，但忽略它；提示不改变退出码。
     """
     add_note("%s (auxiliary file; this does not fail the install)" % message)
 
 
 def distribution_name(raw):
-    """The distribution a requirement line names, or '' if it cannot be read.
+    """返回依赖行声明的发行包名称，无法识别时返回空字符串。
 
-    Options (-r, -e, --index-url), VCS URLs, local paths and archives name no
-    distribution of their own, and inventing one would fail an install over a
-    requirement that is present.
+    -r、-e、--index-url 等选项、VCS URL、本地路径和归档不直接声明发行包；
+    不能猜造包名，否则可能因已满足的依赖而错误拒绝安装。
     """
     line = raw.split("#")[0].strip()
     if not line or line.startswith("-"):
@@ -110,23 +92,21 @@ def distribution_name(raw):
 
 
 def marker_of(raw):
-    """The PEP 508 environment marker on a requirement line, or ''."""
+    """返回依赖行中的 PEP 508 环境标记；不存在时返回空字符串。"""
     _, _, marker = raw.split("#")[0].partition(";")
     return marker.strip()
 
 
 def marker_applies(marker):
-    """Whether pip would install a line carrying this marker in this image.
+    """判断 pip 是否会在当前镜像中安装具有该环境标记的依赖。
 
-    None means the answer cannot be established, and callers must read that as
-    "not enforceable" rather than "absent". Markers compare versions with
-    version semantics, so they are evaluated by `packaging` or not at all: a
-    hand-rolled string comparison reads "3.10" as lower than "3.9" and would
-    fail installs whose requirements pip resolved correctly. A bare venv has
-    no `packaging`, so None is the common answer.
+    无法确定时返回 None；调用方应视为无法强制校验，而非缺失。版本必须按
+    版本语义比较，因此仅使用 packaging 评估；手工字符串比较会将 3.10 判为
+    小于 3.9，从而拒绝 pip 已正确解析的依赖。基础虚拟环境通常没有 packaging，
+    因此返回 None 很常见。
     """
     if re.search(r"\bextra\b", marker):
-        # Gated on an extra, which pip does not install unless it is requested.
+        # 依赖受 extra 限制，只有显式请求该 extra 时 pip 才会安装。
         return False
     try:
         from packaging.markers import Marker
@@ -151,7 +131,7 @@ def load_pyproject(path):
 
 
 def declared_requirement_lines():
-    """(source, requirement-line) pairs from requirements.txt and pyproject.toml."""
+    """从 requirements.txt 和 pyproject.toml 生成 (来源, 依赖行) 对。"""
     requirements = os.path.join(root, "requirements.txt")
     if os.path.isfile(requirements):
         with open(requirements, encoding="utf-8", errors="replace") as handle:
@@ -171,9 +151,9 @@ def declared_requirement_lines():
         for name, spec in poetry.items():
             if str(name).strip().lower() == "python":
                 continue
-            # A table-valued dependency carrying optional, markers or a python
-            # constraint is conditional, and poetry would not have installed it
-            # here unconditionally.
+            # 包含 optional、markers 或 Python 版本约束的
+            # 表格式依赖是条件依赖，Poetry 不会在当前环境
+            # 无条件安装它。
             if isinstance(spec, dict) and (
                 spec.get("optional") or spec.get("markers") or spec.get("python")
             ):
@@ -182,14 +162,11 @@ def declared_requirement_lines():
 
 
 def check_declared_requirements():
-    """Check the manifests name nothing the venv is missing.
+    """检查清单是否声明了虚拟环境中缺失的发行包。
 
-    This is the installer's literal instruction - "install requirements.txt" -
-    so a distribution it names that pip did not land is a failed install. A
-    line pip would have skipped is not: an environment marker that is false
-    here, or an extras-gated dependency, is reported instead. Refusing an
-    install over `pywin32; sys_platform == "win32"` on Linux rejects a skill
-    whose requirements are all present.
+    这是对安装要求的直接检查：声明了应安装的包而 pip 未装上，才算失败。
+    pip 应跳过的依赖，如环境标记不满足或受 extras 限制，仅报告提示。
+    例如在 Linux 上不能因 pywin32; sys_platform == "win32" 未安装而拒绝技能。
     """
     try:
         from importlib import metadata

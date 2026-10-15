@@ -1,4 +1,4 @@
-"""Fill merged cell values before pandas reads an XLSX workbook."""
+"""在 pandas 读取 XLSX 工作簿前填充合并单元格的值。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ logger = logging.getLogger(__name__)
 
 
 def fill_merged_cells_xlsx(content: bytes) -> bytes:
-    """Unmerge ranges and copy the master cell value into every covered cell.
+    """取消合并，并将主单元格的值复制到覆盖范围内的所有单元格。
 
-    openpyxl only stores values on the top-left cell of a merge; pandas then
-    sees NaN in the rest. Filling makes row-wise RAG chunks retain context.
+    openpyxl 仅在合并区域左上角保存值，pandas 会将其他位置读取为 NaN。
+    预先填充可让逐行生成的 RAG 分块保留完整上下文。
     """
     if not zipfile.is_zipfile(BytesIO(content)):
         return content

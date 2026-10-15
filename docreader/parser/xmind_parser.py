@@ -1,4 +1,4 @@
-"""Parse XMind archives into Markdown outlines."""
+"""将 XMind 归档解析为 Markdown 大纲。"""
 
 import io
 import json
@@ -215,7 +215,7 @@ def _render_sheets(sheets: list[_Sheet]) -> tuple[str, int, int, int]:
 
 
 class XMindParser(BaseParser):
-    """Extract topic hierarchy and plain-text notes from XMind files."""
+    """从 XMind 文件中提取主题层级和纯文本备注。"""
 
     def parse_into_text(self, content: bytes) -> Document:
         content_format, payload = _read_content_entry(content)

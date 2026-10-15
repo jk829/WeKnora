@@ -1,4 +1,4 @@
-"""Repair common XLSX packaging issues before openpyxl/pandas read."""
+"""在 openpyxl/pandas 读取前修复常见的 XLSX 打包问题。"""
 
 from __future__ import annotations
 
@@ -22,12 +22,10 @@ _SST_REL_RE = re.compile(
 
 
 def repair_xlsx_bytes(content: bytes) -> bytes | None:
-    """Return repaired XLSX bytes, or None if no repair was applied.
+    """返回修复后的 XLSX 字节；无需修复时返回 None。
 
-    Handles workbooks that reference ``xl/sharedStrings.xml`` in package
-    metadata but omit the part (common with some exporters). When worksheets
-    only use inline strings, manifest references are stripped so openpyxl can
-    read the file.
+    处理元数据引用 xl/sharedStrings.xml、但归档缺少该部件的工作簿。
+    某些导出工具会产生这种文件；工作表仅使用内联字符串时，移除清单引用即可读取。
     """
     if not zipfile.is_zipfile(io.BytesIO(content)):
         return None
@@ -66,13 +64,11 @@ _SQREF_ATTR_RE = re.compile(r'\bsqref="([^"]*)"')
 
 
 def strip_unreadable_ranges_xlsx(content: bytes) -> bytes | None:
-    """Drop data validations and scenario lists whose range openpyxl cannot parse.
+    """移除 openpyxl 无法解析范围的数据验证和方案列表。
 
-    Returns the rewritten bytes, or None when every such range is readable, in
-    which case the file is left exactly as it was. Neither element changes what
-    a cell contains — a validation constrains input, a scenario holds what-if
-    values that are not the displayed ones — so removing one costs text
-    extraction nothing, while keeping it costs the whole document.
+    返回重写后的字节；所有范围均可读取时返回 None，保持原文件不变。
+    数据验证只限制输入，方案保存未实际显示的假设值，均不改变当前单元格内容。
+    移除这些异常元素不影响文本提取，保留则可能导致整份文档无法解析。
     """
     if not zipfile.is_zipfile(io.BytesIO(content)):
         return None
@@ -100,7 +96,7 @@ def strip_unreadable_ranges_xlsx(content: bytes) -> bytes | None:
 
 
 def _unreadable(element: str) -> bool:
-    """True when openpyxl would fail to build this element's range."""
+    """判断 openpyxl 是否会在构建该元素的单元格范围时失败。"""
     from openpyxl.worksheet.cell_range import MultiCellRange
 
     match = _SQREF_ATTR_RE.search(element)
@@ -219,21 +215,16 @@ _WELL_FORMED_FILL_RE = re.compile(rb"<fill\s*>\s*<(?:patternFill|gradientFill)[\
 
 
 def sanitize_xlsx_styles(content: bytes) -> bytes | None:
-    """Rewrite styles.xml fills that openpyxl cannot deserialize.
+    """修复 styles.xml 中 openpyxl 无法反序列化的填充样式。
 
-    Some exporters (cloud-doc systems, LabView, Acumatica ERP) write ``<fill>``
-    elements with no child, or a child that is neither patternFill nor
-    gradientFill. openpyxl's strict sequence descriptor raises
-    ``TypeError: expected <class 'openpyxl.styles.fills.Fill'>`` on them and
-    treats the workbook as non-conformant, so both parse engines die on a
-    file Excel itself opens fine (#3637). Replacing each malformed fill in
-    place with a no-op patternFill keeps the fill list length — and therefore
-    every cellXf fillId reference — stable. Returns None when nothing needs
-    fixing, so callers pay one styles.xml scan on the happy path.
+    部分云文档、LabView、Acumatica ERP 等导出工具生成空 fill 元素，
+    或其子元素既非 patternFill 也非 gradientFill，导致 openpyxl 抛出
+    TypeError: expected <class 'openpyxl.styles.fills.Fill'>，从而两个解析引擎
+    都无法读取 Excel 本身可正常打开的文件（#3637）。原位替换为无效果的
+    patternFill，保持列表长度及所有 cellXf 的 fillId 引用稳定。无需修复时返回 None。
 
-    Never raises: on any internal failure the original bytes flow on
-    unchanged, so a caller recovering from its own error keeps that error's
-    cause instead of trading it for a sanitizer failure.
+    此函数不抛出异常；内部失败时保留原始字节，让调用方保留原错误原因，
+    避免被修复过程的新错误覆盖。
     """
     try:
         return _sanitize_xlsx_styles(content)

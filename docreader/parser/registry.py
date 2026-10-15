@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 
 BUILTIN_ENGINE = "builtin"
 
-# File types that builtin does not implement natively. When the requested
-# engine (including empty / builtin) cannot parse them, route to this engine
-# instead of raising ValueError — PPT/PPTX/CSV are markitdown-only.
+# builtin 未原生实现的文件类型。请求的
+# 引擎（包括空值或 builtin）无法解析时，转交类型默认引擎，
+# 避免直接抛出 ValueError；PPT/PPTX/CSV 由 markitdown 处理。
 _DEFAULT_ENGINE_BY_TYPE = {
     "ppt": "markitdown",
     "pptx": "markitdown",
@@ -33,11 +33,10 @@ _DEFAULT_ENGINE_BY_TYPE = {
 
 
 class ParserEngineRegistry:
-    """Registry for parser engines.
+    """解析引擎注册表。
 
-    Each engine maps file extensions to parser classes.
-    When a requested engine doesn't support a file type, the registry
-    tries a type-level default engine, then builtin.
+    每个引擎将文件扩展名映射到解析器类。请求的引擎不支持目标类型时，
+    先尝试该类型的默认引擎，再回退到 builtin。
     """
 
     def __init__(self):
@@ -66,12 +65,10 @@ class ParserEngineRegistry:
         )
 
     def get_parser_class(self, engine: str, file_type: str) -> Type[BaseParser]:
-        """Resolve parser class for the given engine and file type.
+        """根据引擎和文件类型选择解析器类。
 
-        Fallback order when the requested engine is empty or does not
-        support the type: type-level default (e.g. ppt → markitdown),
-        then builtin. Raises an actionable error listing engines that
-        do support the type.
+        请求引擎为空或不支持该类型时，先使用类型默认引擎（如 ppt 对应 markitdown），
+        再回退到 builtin。仍无法解析时，抛出错误并列出支持该类型的引擎，便于调整配置。
         """
         ft = file_type.lower().lstrip(".")
 
@@ -114,11 +111,11 @@ class ParserEngineRegistry:
         raise ValueError(f"Unsupported file type: {file_type}")
 
     def list_engines(self, overrides: Optional[Dict[str, str]] = None) -> List[Dict]:
-        """Return metadata for all registered engines, including availability.
+        """返回所有已注册引擎的元数据，包括可用性。
 
-        Args:
-            overrides: tenant-level config overrides (e.g. mineru_endpoint, mineru_api_key)
-                       forwarded to each engine's check_available function.
+        参数：
+            overrides: 租户级配置覆盖项，如 mineru_endpoint、mineru_api_key，
+                会传递给各引擎的 check_available 函数。
         """
         result = []
         for name, parsers in self._engines.items():
@@ -149,7 +146,7 @@ class ParserEngineRegistry:
 
 
 def _build_default_registry() -> ParserEngineRegistry:
-    """Create and populate the default registry with all known engines."""
+    """创建默认注册表，并注册所有已知引擎。"""
     reg = ParserEngineRegistry()
 
     _image_types = {
@@ -205,10 +202,10 @@ def _build_default_registry() -> ParserEngineRegistry:
         unavailable_hint="请安装 opendataloader-pdf 与 Java 11+",
     )
 
-    # NOTE: Engine listing is managed by Go-side engine registry
-    # (docparser.ListAllEngines). The Python list_engines method is kept for
-    # backward compatibility with the gRPC ListEngines RPC but the Go app
-    # no longer calls it. MinerU engines are handled natively by Go.
+    # 注意：引擎列表由 Go 端注册表
+    # docparser.ListAllEngines 管理。Python 的 list_engines 仅为
+    # 兼容 gRPC ListEngines RPC 保留，Go 应用
+    # 已不再调用；MinerU 引擎也由 Go 原生处理。
 
     return reg
 

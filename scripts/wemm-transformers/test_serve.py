@@ -1,4 +1,7 @@
-"""Contract tests without downloading weights: python -m unittest discover -s scripts/wemm-transformers."""
+"""无需下载权重的接口契约测试。
+
+用法：python -m unittest discover -s scripts/wemm-transformers
+"""
 import asyncio
 import base64
 import io

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Exercise production embed and MCP Nginx locations with backend fixtures.
+"""使用后端测试数据验证生产环境 embed 与 MCP 的 Nginx 路由。
 
-Requires Docker. Run: python3 scripts/test_embed_nginx.py [nginx-or-ui-image]
+要求 Docker。用法：python3 scripts/test_embed_nginx.py [nginx-or-ui-image]
 """
 import json
 import subprocess
@@ -36,8 +36,8 @@ def check():
         config = config.replace("/usr/share/nginx/html", "/check/web")
         config = config.replace("/etc/nginx/api-proxy.conf", "/check/api-proxy.conf")
         (work / "api-proxy.conf").write_text((ROOT / "frontend/nginx-api-proxy.conf").read_text())
-        # The real policy handler and token middleware are covered by Go tests.
-        # Here vary its responses to verify subrequests, fallback and fail-closed serving.
+        # 真实策略处理器和令牌中间件已由 Go 测试覆盖。
+        # 这里通过改变响应，验证子请求、回退和失败时拒绝访问的行为。
         fixture = """
         server {
             listen 18081;
@@ -67,7 +67,7 @@ def check():
         (work / "nginx.conf").write_text(
             "events {}\nhttp {\n" + (ROOT / "frontend/nginx-http.conf").read_text() + config + fixture + "\n}"
         )
-        # The Nginx worker runs as an unprivileged user in the container.
+        # Nginx 工作进程在容器中使用非特权用户运行。
         work.chmod(0o755)
         cid = docker("create", "-p", "127.0.0.1::80",
                      "--entrypoint", "nginx", IMAGE, "-c", "/check/nginx.conf", "-g", "daemon off;")

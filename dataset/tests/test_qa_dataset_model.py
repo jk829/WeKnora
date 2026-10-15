@@ -1,6 +1,6 @@
-"""Offline regression tests for the actual WeKnora QA-generation call chain.
+"""WeKnora 问答生成实际调用链的离线回归测试。
 
-Uses real pandas/Parquet input and output, but never a real OpenAI client.
+使用真实的 pandas/Parquet 输入输出，但不调用真实的 OpenAI 客户端。
 """
 
 import argparse

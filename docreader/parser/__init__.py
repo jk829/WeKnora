@@ -1,16 +1,7 @@
-"""
-Parser module for WeKnora document processing system.
+"""WeKnora 文档处理系统的解析器模块。
 
-This module provides document parsers for various file formats including:
-- Microsoft Word documents (.doc, .docx)
-- PDF documents
-- Markdown files
-- Plain text files
-- Images with text content
-- Web pages
-
-The parsers extract content from documents and can split them into
-meaningful chunks for further processing and indexing.
+提供 Word（.doc、.docx）、PDF、Markdown、纯文本、图片及网页等格式
+的内容提取能力。生产流程中的分块与后续索引由 Go 应用负责。
 """
 
 from .doc_parser import DocParser
@@ -24,7 +15,7 @@ from .pdf_parser import PDFParser
 from .registry import ParserEngineRegistry, registry
 from .web_parser import WebParser
 
-# Export public classes and modules
+# 导出公共类和模块。
 __all__ = [
     "Docx2Parser",
     "DocParser",

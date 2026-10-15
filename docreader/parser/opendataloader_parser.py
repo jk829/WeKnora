@@ -1,11 +1,9 @@
-"""PDF parser backed by OpenDataLoader PDF (Apache-2.0).
+"""基于 OpenDataLoader PDF（Apache-2.0）的 PDF 解析器。
 
-Requires Java 11+ on PATH and the ``opendataloader-pdf`` Python package.
-Each ``convert()`` spawns a JVM; concurrency is limited via
-``DOCREADER_ODL_MAX_WORKERS``.
-
-Hybrid mode (``docling-fast``, etc.) needs a running
-``opendataloader-pdf-hybrid`` server — configure ``DOCREADER_ODL_HYBRID_URL``.
+要求 PATH 中存在 Java 11+，并安装 opendataloader-pdf Python 包。
+每次 convert() 都启动一个 JVM，并发数由 DOCREADER_ODL_MAX_WORKERS 限制。
+混合模式（如 docling-fast）需要运行 opendataloader-pdf-hybrid 服务，
+通过 DOCREADER_ODL_HYBRID_URL 配置地址。
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ _IMAGE_FILE_NUM_RE = re.compile(r"^imageFile(\d+)\.", re.I)
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Health probes never need redirects; refusing them closes redirect SSRF."""
+    """健康探测无需重定向，拒绝重定向以防止 SSRF。"""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -113,12 +111,11 @@ def opendataloader_available(
     overrides: Optional[Mapping[str, Any]] = None,
     quick: bool = False,
 ) -> Tuple[bool, str]:
-    """Registry / ListEngines availability probe.
+    """供注册表和 ListEngines 使用的可用性探测。
 
-    When ``quick`` is set the hybrid health check uses a single short-timeout
-    attempt with no retries, so it can be used for fast status listing without
-    blocking on long retry/backoff loops. Parsing keeps the patient retry
-    behavior to tolerate a hybrid service that is still starting up.
+    quick 模式对混合服务仅执行一次短超时健康检查，不重试，
+    避免状态列表被较长的重试或退避阻塞。实际解析仍保留重试，
+    以容忍混合服务尚在启动的情况。
     """
     ok, msg = _java_available()
     if not ok:
@@ -163,7 +160,7 @@ def _find_markdown_file(output_dir: str, pdf_stem: str) -> str:
 
 
 def _normalize_odl_image_url(raw: str) -> str:
-    """OpenDataLoader wraps paths as ``<images/foo.png>``; storage may HTML-escape them."""
+    """OpenDataLoader 使用 <images/foo.png> 包装路径，存储层还可能进行 HTML 转义。"""
     s = html.unescape((raw or "").strip())
     s = s.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
     s = s.strip().strip("<>").strip().strip('"').strip("'")
@@ -173,7 +170,7 @@ def _normalize_odl_image_url(raw: str) -> str:
 
 
 def _canonical_image_ref(abs_path: str, output_dir: str) -> str:
-    """Use ``images/<file>`` keys to match OpenDataLoader markdown conventions."""
+    """使用 images/<file> 作为键，与 OpenDataLoader 的 Markdown 约定一致。"""
     rel = os.path.relpath(abs_path, output_dir).replace("\\", "/")
     name = os.path.basename(abs_path)
     if rel.startswith("images/"):
@@ -182,7 +179,7 @@ def _canonical_image_ref(abs_path: str, output_dir: str) -> str:
 
 
 def _collect_images_under_output(output_dir: str) -> Dict[str, str]:
-    """Collect every extracted image under the convert output tree."""
+    """收集转换输出目录树中提取的全部图片。"""
     images: Dict[str, str] = {}
     for root, _, files in os.walk(output_dir):
         for name in files:
@@ -204,7 +201,7 @@ def _register_image_alias(aliases: Dict[str, str], alias: str, canonical: str) -
 
 
 def _build_path_alias_map(images: Dict[str, str]) -> Dict[str, str]:
-    """Map ODL markdown spellings (angle brackets, entities, basenames) to dict keys."""
+    """将 ODL Markdown 中的尖括号、实体及文件名等引用形式映射到字典键。"""
     aliases: Dict[str, str] = {}
     for ref in images:
         base = os.path.basename(ref)
@@ -307,7 +304,7 @@ def _run_convert(
 
 
 class OpenDataLoaderParser(BaseParser):
-    """Parse PDFs with OpenDataLoader (layout-aware markdown + external images)."""
+    """使用 OpenDataLoader 解析 PDF，生成含版面信息的 Markdown 和外部图片。"""
 
     def __init__(self, *args: Any, **kwargs: Any):
         self._engine_overrides: Dict[str, Any] = {

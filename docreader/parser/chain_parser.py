@@ -1,9 +1,8 @@
-"""
-Chain Parser Module
+"""文档解析器组合模块。
 
-This module provides two chain-of-responsibility pattern implementations for document parsing:
-1. FirstParser: Tries multiple parsers sequentially until one succeeds
-2. PipelineParser: Chains parsers where each parser processes the output of the previous one
+提供两种职责链实现：
+1. FirstParser：依次尝试多个解析器，直到首次成功。
+2. PipelineParser：串联多个解析器，后一个处理前一个的输出。
 """
 
 import logging
@@ -18,42 +17,37 @@ logger.setLevel(logging.INFO)
 
 
 class FirstParser(BaseParser):
-    """
-    First-success parser that tries multiple parsers in sequence.
+    """依次尝试解析器，返回首个有效文档。
 
-    This parser attempts to parse content using each registered parser in order.
-    It returns the result from the first parser that successfully produces a valid document.
-    If all parsers fail, it returns an empty Document.
+    若所有解析器都失败，则返回空 Document。
 
-    Usage:
-        # Create a custom FirstParser with specific parser classes
+    用法：
         CustomParser = FirstParser.create(MarkdownParser, HTMLParser)
         parser = CustomParser()
         document = parser.parse_into_text(content_bytes)
     """
 
-    # Tuple of parser classes to be instantiated
+    # 需要实例化的解析器类元组。
     _parser_cls: Tuple[Type["BaseParser"], ...] = ()
 
     def __init__(self, *args, **kwargs):
-        """Initialize FirstParser with configured parser classes."""
+        """根据配置的解析器类初始化 FirstParser。"""
         super().__init__(*args, **kwargs)
 
-        # Instantiate all parser classes into parser instances
+        # 将所有解析器类实例化。
         self._parsers: List[BaseParser] = []
         for parser_cls in self._parser_cls:
             parser = parser_cls(*args, **kwargs)
             self._parsers.append(parser)
 
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse content using the first parser that succeeds.
+        """依次解析内容并返回首个成功的结果。
 
-        Args:
-            content: Raw bytes content to be parsed
+        参数：
+            content: 待解析的原始字节。
 
-        Returns:
-            Document: Parsed document from the first successful parser,
-                     or an empty Document if all parsers fail
+        返回：
+            首个有效 Document；全部失败时返回空 Document。
         """
         for p in self._parsers:
             logger.info(f"FirstParser: using parser {p.__class__.__name__}")
@@ -73,107 +67,101 @@ class FirstParser(BaseParser):
 
     @classmethod
     def create(cls, *parser_classes: Type["BaseParser"]) -> Type["FirstParser"]:
-        """Factory method to create a FirstParser subclass with specific parsers.
+        """创建使用指定解析器的 FirstParser 子类。
 
-        Args:
-            *parser_classes: Variable number of BaseParser subclasses to try in order
+        参数：
+            *parser_classes: 按尝试顺序排列的 BaseParser 子类。
 
-        Returns:
-            Type[FirstParser]: A new FirstParser subclass configured with the given parsers
+        返回：
+            配置好解析器的新 FirstParser 子类。
 
-        Example:
+        示例：
             CustomParser = FirstParser.create(MarkdownParser, HTMLParser)
             parser = CustomParser()
         """
-        # Generate a descriptive class name based on parser names
+        # 根据解析器名称生成便于识别的类名。
         names = "_".join([p.__name__ for p in parser_classes])
-        # Dynamically create a new class with the parser configuration
+        # 动态创建包含解析器配置的新类。
         return type(f"FirstParser_{names}", (cls,), {"_parser_cls": parser_classes})
 
 
 class PipelineParser(BaseParser):
-    """
-    Pipeline parser that chains multiple parsers sequentially.
+    """按顺序串联多个解析器的流水线。
 
-    This parser processes content through a series of parsers where each parser
-    receives the output of the previous parser as input. Images from all parsers
-    are accumulated and merged into the final document.
+    每个解析器接收上一阶段的输出，各阶段图片累积后合并到最终文档。
 
-    Usage:
-        # Create a custom PipelineParser with specific parser classes
+    用法：
         CustomParser = PipelineParser.create(PreParser, MarkdownParser, PostParser)
         parser = CustomParser()
         document = parser.parse_into_text(content_bytes)
     """
 
-    # Tuple of parser classes to be instantiated and chained
+    # 需要实例化并按顺序串联的解析器类元组。
     _parser_cls: Tuple[Type["BaseParser"], ...] = ()
 
     def __init__(self, *args, **kwargs):
-        """Initialize PipelineParser with configured parser classes."""
+        """根据配置的解析器类初始化 PipelineParser。"""
         super().__init__(*args, **kwargs)
 
-        # Instantiate all parser classes into parser instances
+        # 将所有解析器类实例化。
         self._parsers: List[BaseParser] = []
         for parser_cls in self._parser_cls:
             parser = parser_cls(*args, **kwargs)
             self._parsers.append(parser)
 
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse content through a pipeline of parsers.
+        """通过解析器流水线处理内容。
 
-        Each parser in the pipeline processes the output of the previous parser.
-        Images from all parsers are accumulated and merged into the final document.
+        每个解析器处理上一阶段的输出，所有阶段的图片累积后合并到最终文档。
 
-        Args:
-            content: Raw bytes content to be parsed
+        参数：
+            content: 待解析的原始字节。
 
-        Returns:
-            Document: Final document after processing through all parsers,
-                     with accumulated images from all stages
+        返回：
+            所有阶段处理后的 Document，包含累积的图片。
         """
-        # Accumulate images and metadata from all parsers
+        # 累积各阶段解析器的图片和元数据。
         images: Dict[str, str] = {}
         metadata: Dict = {}
         document = Document()
         for p in self._parsers:
             logger.info(f"PipelineParser: using parser {p.__class__.__name__}")
-            # Parse content with current parser
+            # 使用当前解析器处理内容。
             document = p.parse_into_text(content)
-            # Convert document content back to bytes for next parser
+            # 将文档正文转回字节，供下一阶段解析器使用。
             content = endecode.encode_bytes(document.content)
-            # Accumulate images and metadata from this parser
+            # 累积当前解析器的图片和元数据。
             images.update(document.images)
             metadata.update(document.metadata)
-        # Merge all accumulated images and metadata into final document
+        # 将累积的图片和元数据合并到最终文档。
         document.images.update(images)
         document.metadata.update(metadata)
         return document
 
     @classmethod
     def create(cls, *parser_classes: Type["BaseParser"]) -> Type["PipelineParser"]:
-        """Factory method to create a PipelineParser subclass with specific parsers.
+        """创建按顺序串联指定解析器的 PipelineParser 子类。
 
-        Args:
-            *parser_classes: Variable number of BaseParser subclasses to chain in order
+        参数：
+            *parser_classes: 按流水线顺序排列的 BaseParser 子类。
 
-        Returns:
-            Type[PipelineParser]: A new PipelineParser subclass configured with the given parsers
+        返回：
+            配置好解析器的新 PipelineParser 子类。
 
-        Example:
+        示例：
             CustomParser = PipelineParser.create(PreprocessParser, MarkdownParser)
             parser = CustomParser()
         """
-        # Generate a descriptive class name based on parser names
+        # 根据解析器名称生成便于识别的类名。
         names = "_".join([p.__name__ for p in parser_classes])
-        # Dynamically create a new class with the parser configuration
+        # 动态创建包含解析器配置的新类。
         return type(f"PipelineParser_{names}", (cls,), {"_parser_cls": parser_classes})
 
 
 if __name__ == "__main__":
     from docreader.parser.markdown_parser import MarkdownParser
 
-    # Example: Create and use a FirstParser with MarkdownParser
+    # 示例：创建并使用包含 MarkdownParser 的 FirstParser。
     FpCls = FirstParser.create(MarkdownParser)
     lparser = FpCls()
     print(lparser.parse_into_text(b"aaa"))

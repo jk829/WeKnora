@@ -1,8 +1,8 @@
-"""Keep ARM virtual machines with incomplete CPU support from crashing at boot.
+"""避免 CPU 指令支持不完整的 ARM 虚拟机在启动时崩溃。
 
-Probe in a child: SIGILL cannot be caught as a Python exception. Only that
-specific failure permits the OpenSSL portable path; other failures stay fatal.
-OPENSSL_armcap is documented at https://docs.openssl.org/master/man3/OPENSSL_armcap/
+在子进程中探测，因为 SIGILL 无法作为 Python 异常捕获。仅此特定故障
+允许切换到 OpenSSL 通用实现，其他故障仍应终止启动。
+OPENSSL_armcap 文档：https://docs.openssl.org/master/man3/OPENSSL_armcap/
 """
 
 import os

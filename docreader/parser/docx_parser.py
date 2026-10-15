@@ -17,10 +17,9 @@ from docx.opc.pkgreader import _SerializedRelationships, _SerializedRelationship
 from docx.opc.oxml import parse_xml
 
 def load_from_xml_v2(baseURI, rels_item_xml):
-    """
-    Return |_SerializedRelationships| instance loaded with the
-    relationships contained in *rels_item_xml*. Returns an empty
-    collection if *rels_item_xml* is |None|.
+    """从 rels_item_xml 加载关系，返回 _SerializedRelationships 实例。
+
+    输入为 None 时返回空集合。
     """
     srels = _SerializedRelationships()
     if rels_item_xml is not None:
@@ -54,16 +53,15 @@ _W_TBL = qn("w:tbl")
 
 
 def _gfm_cell_text(text: Optional[str]) -> str:
-    """Collapse whitespace and escape pipes so a cell stays one GFM column."""
+    """压缩空白并转义竖线，确保单元格只占一个 GFM 表格列。"""
     return re.sub(r"\s+", " ", text or "").strip().replace("|", "\\|")
 
 
 def table_to_gfm_markdown(table: Any) -> str:
-    """Render a python-docx Table as GFM Markdown.
+    """将 python-docx Table 转换为 GFM Markdown。
 
-    ``row.cells`` already expands merged regions to one entry per grid slot
-    (repeating the same Cell object). Emitting every slot keeps column
-    alignment; comparing cell text would collapse adjacent equal/empty cells.
+    row.cells 已将合并区域展开为每个网格位置一个条目，可能重复同一 Cell。
+    输出每个位置以保持列对齐；若按文本去重，会错误合并相邻同值或空单元格。
     """
     rows: List[List[str]] = []
     for row in table.rows:
@@ -86,7 +84,7 @@ def table_to_gfm_markdown(table: Any) -> str:
 
 
 class ImageData:
-    """Represents a processed image of document content"""
+    """文档处理后得到的图片数据。"""
 
     local_path: str = ""
     object: Optional[Image.Image] = None
@@ -95,7 +93,7 @@ class ImageData:
 
 @dataclass
 class LineData:
-    """Represents a processed line of document content with associated images"""
+    """包含关联图片的文档文本行数据。"""
 
     text: str = ""  # Extracted text content
     images: List[ImageData] = field(
@@ -109,27 +107,27 @@ class LineData:
 
 
 class DocxParser(BaseParser):
-    """DOCX document parser"""
+    """DOCX 文档解析器。"""
 
     def __init__(
         self,
         max_pages: Optional[int] = None,  # Maximum number of pages to process
         **kwargs,
     ):
-        """Initialize DOCX document parser
+        """初始化 DOCX 解析器。
 
-        Args:
-            file_name: File name
-            file_type: File type, if None, infer from file name
-            enable_multimodal: Whether to enable multimodal processing
-            chunk_size: Chunk size
-            chunk_overlap: Chunk overlap
-            separators: List of separators
-            ocr_backend: OCR engine type
-            ocr_config: OCR engine configuration
-            max_image_size: Maximum image size limit
-            max_concurrent_tasks: Maximum number of concurrent tasks
-            max_pages: Maximum number of pages to process
+        参数：
+            file_name: 文件名。
+            file_type: 文件类型，为 None 时从文件名推断。
+            enable_multimodal: 是否启用多模态处理。
+            chunk_size: 分块大小。
+            chunk_overlap: 分块重叠长度。
+            separators: 分隔符列表。
+            ocr_backend: OCR 引擎类型。
+            ocr_config: OCR 引擎配置。
+            max_image_size: 图片大小上限。
+            max_concurrent_tasks: 最大并发任务数。
+            max_pages: 最大处理页数。
         """
         super().__init__(**kwargs)
         self.max_pages = CONFIG.docx_max_pages if max_pages is None else max_pages
@@ -138,7 +136,7 @@ class DocxParser(BaseParser):
         logger.info(f"DocxParser initialized with max_pages={self.max_pages}")
 
     def parse_into_text(self, content: bytes) -> DocumentModel:
-        """Parse DOCX document, extract text content and image Markdown links"""
+        """解析 DOCX 文档，提取文本和图片 Markdown 链接。"""
         logger.info(f"Parsing DOCX document, content size: {len(content)} bytes")
         logger.info(f"Max pages limit set to: {self.max_pages}")
 
@@ -153,10 +151,10 @@ class DocxParser(BaseParser):
             inline_images: Dict[str, str] = {}
 
             def _inline_upload(local_path: str) -> str:
-                """Read temp image file, base64-encode, and return a ref path.
+                """读取临时图片并编码为 Base64，返回引用路径。
 
-                The Go-side ImageResolver (or main.py _resolve_images) handles
-                actual storage upload from Document.images.
+                实际存储上传由 Go 端 ImageResolver 或 main.py 的 _resolve_images
+                基于 Document.images 完成。
                 """
                 import base64
                 import uuid as _uuid
@@ -248,13 +246,13 @@ class DocxParser(BaseParser):
             return self._parse_using_simple_method(content)
 
     def _parse_using_simple_method(self, content: bytes) -> DocumentModel:
-        """Parse document using a simplified method, as a fallback
+        """使用简化方式解析文档，作为回退方案。
 
-        Args:
-            content: Document content
+        参数：
+            content: 文档字节内容。
 
-        Returns:
-            Parsed text
+        返回：
+            解析后的文本。
         """
         logger.info("Attempting to parse document using simplified method")
         start_time = time.time()
@@ -382,13 +380,13 @@ class Docx:
             return None
 
     def _identify_page_paragraph_mapping(self, max_page=100000):
-        """Identify the paragraph range included on each page
+        """识别每页对应的段落范围。
 
-        Args:
-            max_page: Maximum number of pages to process
+        参数：
+            max_page: 最大处理页数。
 
-        Returns:
-            dict: Mapping of page numbers to lists of paragraph indices
+        返回：
+            页码到段落索引列表的映射。
         """
         start_time = time.time()
         logger.info(f"Identifying page to paragraph mapping (max_page={max_page})")
@@ -522,18 +520,16 @@ class Docx:
         to_page: int = 100000,
         max_workers: Optional[int] = None,
     ) -> Tuple[List[LineData], str]:
-        """
-        Process DOCX document, supporting concurrent processing of each page
+        """处理 DOCX 文档，支持逐页并发。
 
-        Args:
-            binary: DOCX document binary content
-            from_page: Starting page number
-            to_page: Ending page number
-            max_workers: Maximum number of workers, default to None (system decides)
+        参数：
+            binary: DOCX 二进制内容。
+            from_page: 起始页码。
+            to_page: 结束页码。
+            max_workers: 最大工作进程数，None 表示由系统决定。
 
-        Returns:
-            tuple: (List of LineData objects with document content,
-            body-order markdown with tables interleaved)
+        返回：
+            (包含文档内容的 LineData 列表, 按正文顺序穿插表格的 Markdown) 元组。
         """
         logger.info("Processing DOCX document")
 
@@ -585,13 +581,13 @@ class Docx:
         return self.all_lines, ordered_text
 
     def _load_document(self, binary):
-        """Load document
+        """加载文档。
 
-        Args:
-            binary: Document binary content
+        参数：
+            binary: 文档二进制内容。
 
-        Returns:
-            Document: Document object, or None (if loading fails)
+        返回：
+            文档对象；加载失败时返回 None。
         """
         try:
             doc = Document(BytesIO(binary))
@@ -602,7 +598,7 @@ class Docx:
             return None
 
     def _init_shared_resources(self):
-        """Initialize shared resources"""
+        """初始化共享资源。"""
         # Create shared resource locks to protect data structures shared between threads
         self.lines_lock = threading.Lock()
 
@@ -610,7 +606,7 @@ class Docx:
         self.all_lines = []
 
     def _get_request_id(self):
-        """Get current request ID"""
+        """获取当前请求 ID。"""
         current_request_id = None
         try:
             from utils.request import get_request_id
@@ -624,15 +620,12 @@ class Docx:
         return current_request_id
 
     def _apply_page_limit(self, para_page_mapping, from_page, to_page):
-        """Apply page limits, return the list of pages to process
+        """应用页面范围限制，返回待处理页码列表。
 
-        Args:
-            para_page_mapping: Mapping of pages to paragraphs
-            from_page: Starting page number
-            to_page: Ending page number
-
-        Returns:
-            list: List of pages to process
+        参数：
+            para_page_mapping: 页码到段落的映射。
+            from_page: 起始页码。
+            to_page: 结束页码。
         """
         # Add page limits
         total_pages = len(para_page_mapping)
@@ -680,14 +673,14 @@ class Docx:
         to_page,
         max_workers,
     ):
-        """Process large documents, using multiprocessing
+        """使用多进程处理大型文档。
 
-        Args:
-            binary: Document binary content
-            pages_to_process: List of pages to process
-            from_page: Starting page number
-            to_page: Ending page number
-            max_workers: Maximum number of workers
+        参数：
+            binary: 文档二进制内容。
+            pages_to_process: 待处理页码列表。
+            from_page: 起始页码。
+            to_page: 结束页码。
+            max_workers: 最大工作进程数。
         """
         # If the number of pages is too large, process in batches to reduce memory consumption
         cpu_count = os.cpu_count() or 2
@@ -719,11 +712,7 @@ class Docx:
         self._cleanup_temp_file(temp_file_path)
 
     def _check_document_has_images(self):
-        """Check if the document contains images
-
-        Returns:
-            bool: Whether the document contains images
-        """
+        """检查文档是否包含图片，返回布尔值。"""
         doc_contains_images = False
         if hasattr(self.doc, "inline_shapes") and len(self.doc.inline_shapes) > 0:
             doc_contains_images = True
@@ -735,15 +724,15 @@ class Docx:
     def _calculate_optimal_workers(
         self, doc_contains_images, pages_to_process, cpu_count
     ):
-        """Calculate the optimal number of workers
+        """计算合适的工作进程数。
 
-        Args:
-            doc_contains_images: Whether the document contains images
-            pages_to_process: List of pages to process
-            cpu_count: Number of CPU cores
+        参数：
+            doc_contains_images: 文档是否含图片。
+            pages_to_process: 待处理页码列表。
+            cpu_count: CPU 核心数。
 
-        Returns:
-            int: Optimal number of workers
+        返回：
+            建议的工作进程数。
         """
         # If no images or few pages, use fewer processes to avoid overhead
         if not doc_contains_images or len(pages_to_process) < cpu_count:
@@ -754,13 +743,13 @@ class Docx:
         return max_workers
 
     def _prepare_document_sharing(self, binary):
-        """Prepare document sharing method
+        """准备跨进程共享文档的方式。
 
-        Args:
-            binary: Document binary content
+        参数：
+            binary: 文档二进制内容。
 
-        Returns:
-            str: Temporary file path, or None if not using
+        返回：
+            临时文件路径；不使用临时文件时返回 None。
         """
 
         temp_file = tempfile.NamedTemporaryFile(delete=False)
@@ -777,17 +766,17 @@ class Docx:
         doc_contains_images,
         temp_file_path,
     ):
-        """Prepare a list of arguments for multiprocess processing
+        """准备多进程任务参数列表。
 
-        Args:
-            pages_to_process: List of pages to process
-            from_page: Starting page number
-            to_page: Ending page number
-            doc_contains_images: Whether the document contains images
-            temp_file_path: Temporary file path
+        参数：
+            pages_to_process: 待处理页码列表。
+            from_page: 起始页码。
+            to_page: 结束页码。
+            doc_contains_images: 文档是否含图片。
+            temp_file_path: 临时文件路径。
 
-        Returns:
-            list: List of arguments
+        返回：
+            各任务的参数列表。
         """
         args_list = []
         for page_num in pages_to_process:
@@ -807,11 +796,11 @@ class Docx:
         return args_list
 
     def _execute_multiprocess_tasks(self, args_list, max_workers):
-        """Execute multiprocess tasks
+        """执行多进程任务。
 
-        Args:
-            args_list: List of arguments
-            max_workers: Maximum number of workers
+        参数：
+            args_list: 任务参数列表。
+            max_workers: 最大工作进程数。
         """
         # Use a shared manager to share data
         with Manager() as manager:
@@ -842,15 +831,15 @@ class Docx:
                 )
 
     def _collect_process_results(self, future_to_idx, args_list, batch_start_time):
-        """Collect multiprocess processing results
+        """收集多进程任务的结果。
 
-        Args:
-            future_to_idx: Mapping of Future to index
-            args_list: List of arguments
-            batch_start_time: Batch start time
+        参数：
+            future_to_idx: Future 到任务索引的映射。
+            args_list: 任务参数列表。
+            batch_start_time: 本批次开始时间。
 
-        Returns:
-            List[LineData]: Processed results as LineData objects
+        返回：
+            处理后的 LineData 列表。
         """
         # Collect results
         completed_count = 0
@@ -901,10 +890,10 @@ class Docx:
         self._cleanup_temp_image_files(temp_img_paths)
 
     def _process_multiprocess_results(self, results: List[LineData]):
-        """Process multiprocess results
+        """处理多进程返回的结果。
 
-        Args:
-            results: List of processed LineData results
+        参数：
+            results: 已处理的 LineData 结果列表。
         """
         lines = list(results)
 
@@ -1020,10 +1009,10 @@ class Docx:
         )
 
     def _cleanup_temp_image_files(self, temp_paths):
-        """Clean up temporary image files created by multiprocessing
+        """清理多进程处理产生的临时图片。
 
-        Args:
-            temp_paths: Set of temporary file paths
+        参数：
+            temp_paths: 临时文件路径集合。
         """
         if not temp_paths:
             return
@@ -1056,10 +1045,10 @@ class Docx:
         )
 
     def _cleanup_temp_file(self, temp_file_path):
-        """Clean up temporary file
+        """清理临时文件。
 
-        Args:
-            temp_file_path: Temporary file path
+        参数：
+            temp_file_path: 临时文件路径。
         """
         if temp_file_path and os.path.exists(temp_file_path):
             try:
@@ -1069,11 +1058,10 @@ class Docx:
                 logger.error(f"Failed to remove temporary file: {str(e)}")
 
     def _compose_ordered_markdown(self, pages_to_process: List[int]) -> str:
-        """Walk body paragraphs and tables in document order and emit GFM.
+        """按文档顺序遍历正文段落和表格，生成 GFM。
 
-        Paragraph processing is page-limited; tables are included only when they
-        sit within that same paragraph range so max_pages does not leak later
-        tables into the parsed text.
+        段落处理受页面范围限制；仅输出位于相同段落范围内的表格，
+        防止 max_pages 之后的表格混入解析结果。
         """
         allowed = set()
         for page in pages_to_process:
@@ -1116,13 +1104,13 @@ class Docx:
         return "\n\n".join(parts)
 
     def _safe_concat_images(self, images):
-        """Safely concatenate image lists
+        """安全拼接图片列表。
 
-        Args:
-            images: List of images
+        参数：
+            images: 待拼接图片列表。
 
-        Returns:
-            Image: Concatenated image, or the first image (if concatenation fails)
+        返回：
+            拼接后的图片；拼接失败时返回第一张图片。
         """
         if not images:
             return None
@@ -1166,16 +1154,16 @@ class Docx:
 
 
 def _save_image_to_temp(logger, image, page_num, img_idx):
-    """Save image to a temporary file to pass between processes
+    """将图片保存到临时文件，以便跨进程传递。
 
-    Args:
-        logger: Logger
-        image: PIL image object
-        page_num: Page number
-        img_idx: Image index
+    参数：
+        logger: 日志记录器。
+        image: PIL 图片对象。
+        page_num: 页码。
+        img_idx: 图片索引。
 
-    Returns:
-        str: Temporary file path, or None (if saving fails)
+    返回：
+        临时文件路径；保存失败时返回 None。
     """
     if not image:
         return None
@@ -1210,21 +1198,21 @@ def process_page_multiprocess(
     temp_file_path: Optional[str],
     enable_multimodal: bool,
 ) -> List[LineData]:
-    """Page processing function specifically designed for multiprocessing
+    """供多进程调用的页面处理函数。
 
-    Args:
-        page_num: Page number
-        paragraphs: List of paragraph indices
-        from_page: Starting page number
-        to_page: Ending page number
-        doc_contains_images: Whether the document contains images
-        max_image_size: Maximum image size
-        doc_binary: Document binary content
-        temp_file_path: Temporary file path, if using
-        enable_multimodal: Whether to enable multimodal processing
+    参数：
+        page_num: 当前页码。
+        paragraphs: 段落索引列表。
+        from_page: 起始页码。
+        to_page: 结束页码。
+        doc_contains_images: 文档是否含图片。
+        max_image_size: 图片大小上限。
+        doc_binary: 文档二进制内容。
+        temp_file_path: 可选的临时文件路径。
+        enable_multimodal: 是否启用多模态处理。
 
-    Returns:
-        list: List of processed result lines
+    返回：
+        处理后的文本行列表。
     """
     try:
         # Set process-level logging
@@ -1326,15 +1314,15 @@ def process_page_multiprocess(
 
 
 def _load_document_in_process(logger, page_num, temp_file_path):
-    """Load document in a process
+    """在工作进程中加载文档。
 
-    Args:
-        logger: Logger
-        page_num: Page number
-        temp_file_path: Temporary file path
+    参数：
+        logger: 日志记录器。
+        page_num: 页码。
+        temp_file_path: 临时文件路径。
 
-    Returns:
-        Document: Loaded document object, or None (if loading fails)
+    返回：
+        加载的文档对象；失败时返回 None。
     """
     logger.info(f"[PID:{os.getpid()}] Loading document in process for page {page_num}")
     try:
@@ -1363,18 +1351,18 @@ def _extract_page_content_in_process(
     enable_multimodal: bool,
     max_image_size: int,
 ) -> Tuple[str, List[Any], List[Tuple[str, Any]]]:
-    """Extract page content in a process
+    """在工作进程中提取页面内容。
 
-    Args:
-        logger: Logger
-        doc: Document object
-        page_num: Page number
-        paragraphs: List of paragraph indices
-        enable_multimodal: Whether to enable multimodal processing
-        max_image_size: Maximum image size
+    参数：
+        logger: 日志记录器。
+        doc: 文档对象。
+        page_num: 页码。
+        paragraphs: 段落索引列表。
+        enable_multimodal: 是否启用多模态处理。
+        max_image_size: 图片大小上限。
 
-    Returns:
-        tuple: (Extracted text, List of extracted images, Content sequence)
+    返回：
+        (提取的文本, 图片列表, 内容顺序) 元组。
     """
     logger.info(
         f"[PID:{os.getpid()}] Page {page_num}: Processing {len(paragraphs)} paragraphs, "
@@ -1458,18 +1446,18 @@ def _extract_page_content_in_process(
 def _extract_image_in_process(
     logger, doc, paragraph, page_num, para_idx, max_image_size
 ):
-    """Extract image from a paragraph in a process
+    """在工作进程中从段落提取图片。
 
-    Args:
-        logger: Logger
-        doc: Document object
-        paragraph: Paragraph object
-        page_num: Page number
-        para_idx: Paragraph index
-        max_image_size: Maximum image size
+    参数：
+        logger: 日志记录器。
+        doc: 文档对象。
+        paragraph: 段落对象。
+        page_num: 页码。
+        para_idx: 段落索引。
+        max_image_size: 图片大小上限。
 
-    Returns:
-        Image: Extracted image object, or None
+    返回：
+        提取的图片对象；无图片或失败时返回 None。
     """
     try:
         # Attempt to extract image

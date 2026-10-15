@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve WeMM text/image embeddings with the official Transformers model code."""
+"""使用官方 Transformers 模型代码提供 WeMM 文本和图片向量服务。"""
 import argparse
 import base64
 import binascii
@@ -132,8 +132,8 @@ def decode_image(url):
         with Image.open(io.BytesIO(data)) as image:
             if image.width * image.height > 40_000_000:
                 bad("Image exceeds 40 megapixels before resizing.")
-            # Preserve alpha until qwen-vl-utils composites RGBA onto white,
-            # matching the official inference path instead of exposing hidden RGB.
+            # 保留透明通道，直到 qwen-vl-utils 将 RGBA 合成到白色背景，
+            # 与官方推理流程一致，避免暴露透明区域隐藏的 RGB 内容。
             return image.copy()
     except (ValueError, binascii.Error, UnidentifiedImageError, OSError, Image.DecompressionBombError):
         bad("Invalid image data.")
@@ -185,7 +185,7 @@ def resolve_device_dtype(torch, settings):
 
 class Engine:
     def __init__(self, settings):
-        # Import after CLI setup so --mps-fallback takes effect before torch loads.
+        # 在命令行配置后再导入，使 --mps-fallback 在 torch 加载前生效。
         import torch
         from transformers import AutoConfig, AutoModel, AutoProcessor
         self.settings, self.torch = settings, torch
@@ -211,8 +211,8 @@ class Engine:
         from qwen_vl_utils import process_vision_info
         torch = self.torch
         vectors, total_tokens = [], 0
-        # WeMM's model stores rope_deltas. Keep independent conversations serialized,
-        # and decode images only for the current input rather than the entire batch.
+        # WeMM 模型保存 rope_deltas，因此不同会话的推理必须串行，
+        # 并且仅解码当前输入的图片，避免一次解码整个批次。
         with self.lock, torch.inference_mode():
             for conversation in conversations:
                 messages = prepare_messages(conversation, self.settings.max_pixels)
@@ -226,8 +226,8 @@ class Engine:
                 if last != "<embedding>":
                     raise RuntimeError("Processor did not append the official <embedding> token.")
                 inputs = inputs.to(self.device)
-                # Reset explicitly as well, so older official code revisions are safe
-                # when a text request follows a multimodal request.
+                # 显式重置状态，确保使用较旧官方代码时，
+                # 多模态请求之后的文本请求也能安全执行。
                 self.model.model.rope_deltas = None
                 vector = self.model.embedding(**inputs, use_cache=False).float()
                 vector = torch.nn.functional.normalize(vector[:, :dimension], dim=-1).cpu()[0]
@@ -240,7 +240,7 @@ class Engine:
 
 
 class BodyLimit:
-    """Bound JSON bodies, including chunked requests, before parsing/base64 decoding."""
+    """在 JSON 解析及 Base64 解码前限制请求体大小，包括分块传输请求。"""
     def __init__(self, app, limit=32 * 1024 * 1024):
         self.app, self.limit = app, limit
 
@@ -359,7 +359,7 @@ def main():
         os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
     settings = Settings(**args, api_key=os.environ.get("WEMM_API_KEY", ""))
     import uvicorn
-    # A single process owns the model; do not add workers without separate GPUs.
+    # 单个进程持有模型；没有独立 GPU 时不要增加工作进程。
     uvicorn.run(create_app(settings), host=host, port=port, workers=1)
 
 

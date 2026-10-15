@@ -1,6 +1,6 @@
-"""Render-only checks for App rollout strategies and documented storage topologies.
+"""仅通过渲染验证 App 滚动更新策略及文档约定的存储拓扑。
 
-Run with Helm on PATH and PyYAML installed:
+要求 PATH 中有 Helm，且已安装 PyYAML：
     python3 -m unittest discover -s helm/tests -v
 """
 

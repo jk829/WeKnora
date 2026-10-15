@@ -1,4 +1,4 @@
-"""Chunk document schema."""
+"""文档及其分块的数据结构。"""
 
 import json
 from typing import Any, Dict, List
@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class Chunk(BaseModel):
-    """Document Chunk including chunk content, chunk metadata."""
+    """文档分块，包含文本内容与元数据。"""
 
     content: str = Field(default="", description="chunk text content")
     seq: int = Field(default=0, description="Chunk sequence number")
@@ -23,7 +23,7 @@ class Chunk(BaseModel):
     )
 
     def to_dict(self, **kwargs: Any) -> Dict[str, Any]:
-        """Convert Chunk to dict."""
+        """将分块转换为字典，并合并额外字段。"""
 
         data = self.model_dump()
         data.update(kwargs)
@@ -31,21 +31,21 @@ class Chunk(BaseModel):
         return data
 
     def to_json(self, **kwargs: Any) -> str:
-        """Convert Chunk to json."""
+        """将分块序列化为 JSON 字符串。"""
         data = self.to_dict(**kwargs)
         return json.dumps(data)
 
     def __hash__(self):
-        """Hash function."""
+        """根据分块文本计算哈希值。"""
         return hash((self.content,))
 
     def __eq__(self, other):
-        """Equal function."""
+        """按文本内容判断两个分块是否相等。"""
         return self.content == other.content
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], **kwargs: Any):  # type: ignore
-        """Create Chunk from dict."""
+        """从字典创建分块，忽略 class_name 字段。"""
         if isinstance(kwargs, dict):
             data.update(kwargs)
 
@@ -54,13 +54,13 @@ class Chunk(BaseModel):
 
     @classmethod
     def from_json(cls, data_str: str, **kwargs: Any):  # type: ignore
-        """Create Chunk from json."""
+        """从 JSON 字符串创建分块。"""
         data = json.loads(data_str)
         return cls.from_dict(data, **kwargs)
 
 
 class Document(BaseModel):
-    """Document including document content, document metadata."""
+    """文档数据，包含正文、图片、分块及元数据。"""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -86,11 +86,11 @@ class Document(BaseModel):
     )
 
     def set_content(self, content: str) -> None:
-        """Set document content."""
+        """设置文档正文。"""
         self.content = content
 
     def get_content(self) -> str:
-        """Get document content."""
+        """获取文档正文。"""
         return self.content
 
     def is_valid(self) -> bool:

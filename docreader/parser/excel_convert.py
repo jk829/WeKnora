@@ -1,4 +1,4 @@
-"""LibreOffice helpers for normalizing legacy or unusual Excel uploads."""
+"""使用 LibreOffice 规范化旧版或非标准 Excel 上传文件。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _ZIP_MAGIC = b"PK\x03\x04"
 
 
 def detect_excel_format(content: bytes) -> str | None:
-    """Return pandas/excel format id: xlsx, xls, xlsb, ods, or None."""
+    """返回 pandas/Excel 格式标识：xlsx、xls、xlsb、ods 或 None。"""
     if not content:
         return None
 
@@ -47,7 +47,7 @@ def engine_for_format(ext: str | None) -> str:
 
 
 def convert_excel_to_xlsx_bytes(content: bytes, suffix: str = ".xlsx") -> bytes | None:
-    """Convert arbitrary spreadsheet bytes to XLSX using LibreOffice, if available."""
+    """LibreOffice 可用时，将电子表格字节内容转换为 XLSX。"""
     soffice = find_soffice()
     if not soffice:
         return None
@@ -106,7 +106,7 @@ def convert_excel_to_xlsx_bytes(content: bytes, suffix: str = ".xlsx") -> bytes 
 
 
 def normalize_excel_bytes(content: bytes, file_type: str | None = None) -> bytes:
-    """Return bytes readable by pandas, converting via LibreOffice when needed."""
+    """返回 pandas 可读取的字节内容，必要时通过 LibreOffice 转换。"""
     ext = detect_excel_format(content)
     if ext is not None:
         return content

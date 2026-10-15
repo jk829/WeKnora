@@ -1,8 +1,8 @@
-"""Verify a ParadeDB patch upgrade using disposable Docker volumes and real migrations.
+"""使用一次性 Docker 卷及真实迁移验证 ParadeDB 补丁升级。
 
-Requires Python 3 and Docker; no database credentials or running WeKnora needed.
-Run: python3 scripts/test_paradedb_upgrade.py [--to 0.25.11|0.22.6]
-Artifacts (snapshots, plans, logs and a synthetic-data backup) are kept in /tmp.
+要求 Python 3 和 Docker，无需数据库凭据或运行中的 WeKnora。
+用法：python3 scripts/test_paradedb_upgrade.py [--to 0.25.11|0.22.6]
+快照、执行计划、日志及合成数据备份保存在 /tmp。
 """
 import argparse
 import hashlib
@@ -17,7 +17,7 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OUT = None
 CONTAINER = 'weknora-pdb-upgrade-' + uuid.uuid4().hex[:12]
-# target pg_search version -> (image, expected vector version or None if unchanged)
+# 目标 pg_search 版本映射到镜像和预期 vector 版本；None 表示不变。
 TARGETS = {
     '0.22.6': ('paradedb/paradedb:v0.22.6-pg17', None),
     '0.25.11': ('paradedb/paradedb:v0.25.11-pg17', '0.8.4'),
@@ -43,7 +43,7 @@ def seed():
             vector = '[' + ','.join(f'{rng.uniform(-1, 1):.5f}' for _ in range(dim)) + ']'
             if n in (1, 71, 139):
                 queries[f'{dim}_{n}'] = vector
-            # Vary term frequency/length; cover NULL, disabled, tags, KB and document filters.
+            # 改变词频和长度，覆盖 NULL、禁用状态、标签、知识库及文档过滤。
             content = ' '.join([topics[n % 6]] * (1 + n % 7)) + ' ' + ' '.join(rng.choices(topics, k=n % 5))
             enabled = 'NULL' if n % 13 == 0 else ('false' if n % 11 == 0 else 'true')
             stmts.append(f"INSERT INTO embeddings(source_id, source_type, chunk_id, knowledge_id, knowledge_base_id, tag_id, content, dimension, embedding, is_enabled) VALUES ('src-{dim}-{n}',{n % 3},'chunk-{dim}-{n}','doc-{n % 9}','kb-{n % 3}',{quote('tag-'+str(n % 4)) if n % 7 else 'NULL'},{quote(content)},{dim},{quote(vector)},{enabled});")
@@ -76,7 +76,7 @@ def snapshot(stage):
     plans = {}
     keyword_queries = ['数据库', '知识库 文档', 'Docker AVX2', 'PostgreSQL database', '北京 上海', '权限 用户', '不存在的关键词xyz', '']
     filters = ['', " AND knowledge_base_id IN ('kb-0','kb-1')", " AND knowledge_base_id='kb-0' AND knowledge_id IN ('doc-0','doc-3')", " AND tag_id IN ('tag-1','tag-2')"]
-    # Same |||, scoring and enabled predicate as KeywordsRetrieve. id only resolves equal-score ties.
+    # 使用与 KeywordsRetrieve 相同的 |||、评分及 enabled 条件；id 仅用于同分排序。
     for q in keyword_queries:
         for j, filt in enumerate(filters):
             query = f"SELECT id,paradedb.score(id) AS score FROM embeddings WHERE content ||| {quote(q)} AND (is_enabled IS NULL OR is_enabled=true){filt} ORDER BY score DESC,id LIMIT 10"
@@ -87,11 +87,11 @@ def snapshot(stage):
     for name, vector in vectors.items():
         dim = int(name.split('_')[0])
         for j, filt in enumerate(filters):
-            # Exact production candidate expansion, halfvec expression, threshold, and ef_search.
+            # 完全沿用生产环境的候选扩展、halfvec 表达式、阈值和 ef_search。
             query = f"SELECT id,1-distance AS score FROM (SELECT id,embedding::halfvec({dim}) <=> {quote(vector)}::halfvec({dim}) AS distance FROM embeddings WHERE dimension={dim} AND (is_enabled IS NULL OR is_enabled=true){filt} ORDER BY embedding::halfvec({dim}) <=> {quote(vector)}::halfvec({dim}) LIMIT 100) candidates WHERE distance<=1.1 ORDER BY distance LIMIT 10"
             key = f'vector:{name}:{j}'
             results[key] = sql('BEGIN; SET LOCAL hnsw.ef_search=100; '+query+'; COMMIT;')
-            # Force the index separately so a small fixture cannot silently test only sequential scans.
+            # 单独强制使用索引，避免小规模测试数据静默地只走顺序扫描。
             results[key+':hnsw'] = sql('BEGIN; SET LOCAL enable_seqscan=off; SET LOCAL enable_bitmapscan=off; SET LOCAL enable_sort=off; SET LOCAL hnsw.ef_search=100; '+query+'; COMMIT;')
             plans[key] = sql('BEGIN; SET LOCAL enable_seqscan=off; SET LOCAL enable_bitmapscan=off; SET LOCAL enable_sort=off; SET LOCAL hnsw.ef_search=100; EXPLAIN (COSTS OFF) '+query+'; COMMIT;')
             assert 'Index Scan using embeddings_embedding_idx_'+str(dim) in plans[key], key+' did not use HNSW'
@@ -120,7 +120,7 @@ def start(image, volume):
            '-e', 'POSTGRES_PASSWORD=isolated-upgrade-test', '-e', 'POSTGRES_DB=weknora',
            '-v', volume+':/var/lib/postgresql/data', image)
     for _ in range(120):
-        # Wait for the final server, not the bootstrap server that only uses a socket.
+        # 等待最终服务启动，而非仅通过套接字提供访问的初始化服务。
         ready = subprocess.run(['docker', 'exec', CONTAINER, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'weknora'], capture_output=True)
         if ready.returncode == 0:
             return
@@ -133,13 +133,13 @@ def migrate(db, paths, label):
         for path in paths:
             log.write(path.name+'\n')
             text = path.read_text()
-            # CONCURRENTLY cannot run in a transaction block; golang-migrate does not add one either.
+            # CONCURRENTLY 不能在事务块中执行；golang-migrate 也不会额外添加事务。
             sql(text if 'CONCURRENTLY' in text else 'BEGIN;\n'+text+'\nCOMMIT;', db)
     print(f'{label}: {len(paths)} SQL migrations passed', flush=True)
 
 
 def check_writes():
-    # Committed writes must update both existing BM25 and HNSW indexes.
+    # 已提交的写入必须同时更新已有的 BM25 和 HNSW 索引。
     vector = '['+','.join(['1']*1024)+']'
     new_id = sql("INSERT INTO embeddings(source_id,source_type,chunk_id,knowledge_id,knowledge_base_id,content,dimension,embedding,is_enabled) VALUES ('post-upgrade',0,'new-chunk','new-doc','new-kb','upgradeuniquetoken',1024,"+quote(vector)+",true) RETURNING id")
     assert sql("SELECT id FROM embeddings WHERE content ||| 'upgradeuniquetoken'") == new_id
@@ -174,14 +174,14 @@ def main():
     upgrade_sql = '\n'.join(p.read_text() for p in upgrade)
     search_version = "SELECT extversion FROM pg_extension WHERE extname='pg_search'"
     vector_version = "SELECT extversion FROM pg_extension WHERE extname='vector'"
-    # Only resources created by this invocation are ever removed.
+    # 仅删除本次执行创建的资源。
     docker('volume', 'create', volume)
     try:
         start(old, volume)
         migrate('weknora', baseline, 'old-migrations')
         assert sql(search_version) == '0.22.2'
         old_vector = sql(vector_version)
-        # Older external servers without the target package must remain usable.
+        # 未安装目标包的旧版外部服务仍应可用。
         migrate('weknora', upgrade, 'unavailable-target')
         assert sql(search_version) == '0.22.2'
         assert sql(vector_version) == old_vector
@@ -192,14 +192,14 @@ def main():
         docker('stop', '-t', '60', CONTAINER)
         docker('rm', CONTAINER)
         start(new, volume)
-        # Replacing the image alone leaves the SQL catalog at the old version.
+        # 仅替换镜像会使 SQL 系统目录停留在旧版本。
         assert sql(search_version) == '0.22.2'
         sql("BEGIN; SET LOCAL app.skip_embedding='true';\n"+upgrade_sql+"\nCOMMIT;")
         assert sql(search_version) == '0.22.2'
         migrate('weknora', upgrade + upgrade, 'extension-upgrade-and-idempotence')
         assert sql(search_version) == target
         assert sql(vector_version) == (vector_target or old_vector)
-        # Calls into the shared library crash the server if the catalog lags behind it.
+        # 系统目录落后于共享库时，调用共享库可能导致数据库服务崩溃。
         assert sql('SELECT version FROM paradedb.version_info()') == target
         snapshot('after')
         docker('restart', '-t', '60', CONTAINER)
@@ -212,7 +212,7 @@ def main():
         snapshot('after-restart')
         check_writes()
         sql('CREATE DATABASE upgrade_fresh TEMPLATE template0')
-        # The new migration must not install pg_search on non-search databases.
+        # 新迁移不得在非搜索数据库上安装 pg_search。
         migrate('upgrade_fresh', upgrade, 'absent-extension')
         assert sql("SELECT count(*) FROM pg_extension WHERE extname IN ('pg_search','vector')", 'upgrade_fresh') == '0'
         migrate('upgrade_fresh', paths, 'fresh-migrations')

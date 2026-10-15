@@ -1,4 +1,4 @@
-"""Static HTML file parser."""
+"""静态 HTML 文件解析模块。"""
 
 from bs4 import BeautifulSoup
 
@@ -10,7 +10,7 @@ from docreader.parser.mhtml_parser import MHTMLParser
 
 
 class HTMLToMarkdownParser(BaseParser):
-    """Convert uploaded HTML bytes to Markdown without browser or network access."""
+    """将上传的 HTML 字节转换为 Markdown，无需浏览器或网络访问。"""
 
     def parse_into_text(self, content: bytes) -> Document:
         if not content.strip():
@@ -32,6 +32,6 @@ class HTMLToMarkdownParser(BaseParser):
 
 
 class HTMLParser(PipelineParser):
-    """Extract static HTML content and normalize the resulting Markdown."""
+    """提取静态 HTML 正文，并规范化生成的 Markdown。"""
 
     _parser_cls = (HTMLToMarkdownParser, MarkdownParser)

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""
-Analyze PDF form fields and output their structure.
-Usage: python analyze_form.py <pdf_file>
+"""分析 PDF 表单字段并输出其结构。
+
+用法：python analyze_form.py <pdf_file>
 """
 
 import sys
 import json
 
 def analyze_form(pdf_path):
-    """Analyze form fields in a PDF file."""
-    # This is a mock implementation for testing
-    # In production, would use pypdf or pdfrw
+    """分析 PDF 文件中的表单字段。"""
+    # 这是用于测试的模拟实现。
+    # 生产环境应使用 pypdf 或 pdfrw。
     
     print(f"Analyzing PDF: {pdf_path}")
     print("=" * 50)
     
-    # Mock form fields for demonstration
+    # 用于演示的模拟表单字段。
     fields = {
         "name": {"type": "text", "required": True},
         "email": {"type": "text", "required": True},
@@ -33,7 +33,7 @@ def analyze_form(pdf_path):
     print("\n" + "=" * 50)
     print("Analysis complete.")
     
-    # Output JSON for programmatic use
+    # 输出 JSON 以便程序读取。
     return json.dumps(fields, indent=2)
 
 if __name__ == "__main__":

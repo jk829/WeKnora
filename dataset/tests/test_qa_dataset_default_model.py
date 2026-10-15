@@ -1,4 +1,4 @@
-"""Regression test for the QA dataset model default."""
+"""问答数据集默认模型的回归测试。"""
 
 import importlib.util
 from pathlib import Path

@@ -1,4 +1,4 @@
-"""Expand vertically merged DOCX table cells before Markdown conversion."""
+"""在转换为 Markdown 前展开 DOCX 表格中纵向合并的单元格。"""
 
 from __future__ import annotations
 
@@ -22,14 +22,12 @@ _VAL = f"{_W}val"
 
 
 def fill_vertical_merged_cells_docx(content: bytes) -> bytes:
-    """Repeat a vertical merge's master content in every covered table row.
+    """将纵向合并的主单元格内容复制到其覆盖的每一行。
 
-    DOCX stores vertical merges as a ``vMerge=restart`` cell followed by empty
-    ``vMerge=continue`` cells. Mammoth preserves that as an HTML ``rowspan``,
-    but Markdown tables cannot represent row spans and the later rows lose the
-    merged value. This rewrites only Word XML parts that contain ``vMerge``;
-    all other package parts and documents without vertical merges pass through
-    unchanged.
+    DOCX 用 vMerge=restart 标记起始单元格，后续空单元格标记为
+    vMerge=continue。Mammoth 将其转换为 HTML rowspan，但 Markdown
+    表格无法表达跨行合并，导致后续行丢失该值。这里只重写包含 vMerge
+    的 Word XML 部件；其他部件及没有纵向合并的文档保持原样。
     """
     source = io.BytesIO(content)
     if not zipfile.is_zipfile(source):
@@ -84,7 +82,7 @@ def _fill_vertical_merges_in_xml(data: bytes) -> tuple[bytes | None, int]:
 
     changed = False
     filled_count = 0
-    # Process nested tables first so copied cell content is already normalized.
+    # 先处理嵌套表格，确保复制的单元格内容已规范化。
     for table in reversed(root.xpath(".//w:tbl", namespaces={"w": _WORD_NAMESPACE})):
         table_changed, table_filled_count = _fill_table_vertical_merges(table)
         changed = changed or table_changed

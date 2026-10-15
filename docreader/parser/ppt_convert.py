@@ -1,4 +1,4 @@
-"""LibreOffice helpers for legacy binary PowerPoint (.ppt) uploads."""
+"""使用 LibreOffice 处理旧版二进制 PowerPoint（.ppt）上传文件。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def is_zip_openxml(content: bytes) -> bool:
 
 
 def needs_ppt_to_pptx_conversion(content: bytes, file_type: str | None) -> bool:
-    """True when content is legacy .ppt (OLE), not modern .pptx (ZIP)."""
+    """判断内容是否为旧版 PPT（OLE），而非现代 PPTX（ZIP）。"""
     ext = (file_type or "").lstrip(".").lower()
     if ext == "pptx" or is_zip_openxml(content):
         return False
@@ -35,7 +35,7 @@ def needs_ppt_to_pptx_conversion(content: bytes, file_type: str | None) -> bool:
 
 
 def convert_ppt_to_pptx_bytes(content: bytes, suffix: str = ".ppt") -> bytes | None:
-    """Convert legacy PowerPoint bytes to PPTX using LibreOffice, if available."""
+    """LibreOffice 可用时，将旧版 PowerPoint 字节转换为 PPTX。"""
     soffice = find_soffice()
     if not soffice:
         return None
@@ -94,7 +94,7 @@ def convert_ppt_to_pptx_bytes(content: bytes, suffix: str = ".ppt") -> bytes | N
 
 
 def normalize_ppt_bytes(content: bytes, file_type: str | None) -> tuple[bytes, str]:
-    """Return (bytes, extension) suitable for MarkItDown (pptx when converted)."""
+    """返回适合 MarkItDown 的 (字节内容, 扩展名)，转换后扩展名为 pptx。"""
     ext = (file_type or "").lstrip(".").lower()
 
     if is_zip_openxml(content):

@@ -67,7 +67,7 @@ _MARKDOWN_TABLE_PRIORITY = 15
 
 
 def _is_empty_table_header_row(header: str) -> bool:
-    """True when the column-name line is only pipes/whitespace (MarkItDown quirk)."""
+    """判断列名行是否只包含竖线和空白，用于兼容 MarkItDown 输出。"""
     newline = header.find("\n")
     if newline < 0:
         return False

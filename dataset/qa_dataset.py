@@ -43,14 +43,14 @@ def read_parquet(path):
 
 
 def save_to_parquet(df: pd.DataFrame, path: str):
-    """Save DataFrame to parquet file"""
+    """将 DataFrame 保存为 Parquet 文件。"""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path)
     print(f"Saved to {path}")
 
 
 def print_stats(df: pd.DataFrame, name: str):
-    """Print statistics of a DataFrame"""
+    """输出 DataFrame 的记录数及唯一标识数量。"""
     print(f"\n{name} Statistics:")
     print(f"- Total records: {len(df)}")
     if "id" in df.columns:
@@ -64,40 +64,39 @@ def print_stats(df: pd.DataFrame, name: str):
 def sample_data(
     queries: pd.DataFrame, corpus: pd.DataFrame, qrels: pd.DataFrame, nq=1000
 ):
-    """
-    Sample data from the dataset with validation checks.
+    """校验关联关系并从数据集中抽样。
 
-    Args:
-        queries: DataFrame with qid and text columns (one-to-one)
-        corpus: DataFrame with pid and text columns (one-to-one)
-        qrels: DataFrame with qid and pid columns (many-to-many)
-        nq: Number of queries to sample (default: 1000)
+    参数：
+        queries: 查询数据，包含 id 和 text 列。
+        corpus: 语料数据，包含 id 和 text 列。
+        qrels: 查询与段落的多对多关联，包含 qid 和 pid 列。
+        nq: 抽样查询数，默认 1000。
 
-    Returns:
-        Tuple of (sampled_queries, sampled_corpus, sampled_qrels)
+    返回：
+        (sampled_queries, sampled_corpus, sampled_qrels) 元组。
     """
-    # 1. Filter qrels to only include qids that exist in queries
+    # 1. 仅保留 queries 中存在的查询关联。
     valid_qids = set(queries["id"])
     qrels = qrels[qrels["qid"].isin(valid_qids)]
 
-    # 2. Filter qrels to only include pids that exist in corpus
+    # 2. 仅保留 corpus 中存在的段落关联。
     valid_pids = set(corpus["id"])
     qrels = qrels[qrels["pid"].isin(valid_pids)]
 
-    # 3. Sample queries (ensure we have enough qrels samples for each)
-    # Get qids with most associated pids to ensure diversity
+    # 3. 选择关联段落较多的查询进行抽样。
+    # 优先选择关联 pid 最多的 qid，以覆盖更多相关段落。
     qid_counts = qrels["qid"].value_counts()
     sampled_qids = qid_counts.nlargest(min(nq, len(qid_counts))).index
 
-    # 4. Get all pids associated with sampled qids
+    # 4. 收集抽样查询关联的全部 pid。
     sampled_qrels = qrels[qrels["qid"].isin(sampled_qids)]
     sampled_pids = set(sampled_qrels["pid"])
 
-    # 5. Add extra pids from corpus for redundancy (20% of sampled pids)
+    # 5. 从语料中额外抽取段落作为冗余，数量为已抽样 pid 的 20%。
     extra_pids = set(corpus["id"].sample(int(0.2 * len(sampled_pids))))
     all_pids = sampled_pids.union(extra_pids)
 
-    # 6. Create final sampled datasets
+    # 6. 构建最终的抽样数据集。
     sampled_queries = queries[queries["id"].isin(sampled_qids)]
     sampled_corpus = corpus[corpus["id"].isin(all_pids)]
 
@@ -108,13 +107,12 @@ class QAAnsweringSystem:
     def __init__(
         self, queries: pd.DataFrame, corpus: pd.DataFrame, qrels: pd.DataFrame
     ):
-        """
-        Initialize QA system with data
+        """使用查询、语料及关联数据初始化问答系统。
 
-        Args:
-            queries: DataFrame with qid and text columns
-            corpus: DataFrame with pid and text columns
-            qrels: DataFrame with qid and pid mapping
+        参数：
+            queries: 包含 id 和 text 的查询 DataFrame。
+            corpus: 包含 id 和 text 的语料 DataFrame。
+            qrels: 包含 qid 与 pid 映射的 DataFrame。
         """
         self.queries = queries
         self.corpus = corpus
@@ -124,20 +122,16 @@ class QAAnsweringSystem:
             base_url=os.getenv("OPENAI_BASE_URL"),
         )
 
-        # Create lookup dictionaries
+        # 构建按 ID 查找查询和语料的字典。
         self.qid_to_text = dict(zip(queries["id"], queries["text"]))
         self.pid_to_text = dict(zip(corpus["id"], corpus["text"]))
         self.qid_to_pids = qrels.groupby("qid")["pid"].apply(list).to_dict()
 
     def get_context_for_qid(self, qid: str) -> str:
-        """
-        Get all relevant text for a query ID
+        """按查询 ID 收集全部相关段落，并返回拼接后的上下文文本。
 
-        Args:
-            qid: Query ID to search for
-
-        Returns:
-            Combined context text from all related passages
+        参数：
+            qid: 要查找的查询 ID。
         """
         if qid not in self.qid_to_pids:
             raise ValueError("Question ID not found")
@@ -151,15 +145,14 @@ class QAAnsweringSystem:
         return "\n\n".join(context_parts)
 
     def answer_question(self, qid: str, model: str = DEFAULT_QA_MODEL) -> str:
-        """
-        Use OpenAI API to answer question based on qid context
+        """调用 OpenAI API，依据查询对应的上下文回答问题。
 
-        Args:
-            qid: Query ID to answer
-            model: OpenAI model to use
+        参数：
+            qid: 待回答的查询 ID。
+            model: 使用的模型名称。
 
-        Returns:
-            Generated answer from LLM
+        返回：
+            大模型生成的答案。
         """
         if qid not in self.qid_to_text:
             raise ValueError("Question ID not found")
@@ -188,32 +181,32 @@ Answer:"""
 
 
 def sample_command(args):
-    """Handle sample command"""
-    # Load data
+    """处理 sample 子命令。"""
+    # 加载数据。
     print("Loading data...")
     queries = read_parquet(args.queries)
     corpus = read_parquet(args.corpus)
     qrels = read_parquet(args.qrels)
 
-    # Print original stats
+    # 输出原始数据统计。
     print("\nOriginal Dataset Statistics:")
     print_stats(queries, "Queries")
     print_stats(corpus, "Corpus")
     print_stats(qrels, "Qrels")
 
-    # Sample data
+    # 执行数据抽样。
     print(f"\nSampling {args.nq} queries...")
     sampled_queries, sampled_corpus, sampled_qrels = sample_data(
         queries, corpus, qrels, args.nq
     )
 
-    # Print sampled stats
+    # 输出抽样结果统计。
     print("\nSampled Dataset Statistics:")
     print_stats(sampled_queries, "Sampled Queries")
     print_stats(sampled_corpus, "Sampled Corpus")
     print_stats(sampled_qrels, "Sampled Qrels")
 
-    # Save sampled data
+    # 保存抽样数据。
     print("\nSaving sampled data...")
     save_to_parquet(sampled_queries, f"{args.output_dir}/queries.parquet")
     save_to_parquet(sampled_corpus, f"{args.output_dir}/corpus.parquet")
@@ -228,24 +221,22 @@ def generate_answers(
     *,
     model: str = DEFAULT_QA_MODEL,
 ):
-    """
-    Generate answers for sampled queries with resume support
+    """为抽样查询生成答案，支持断点续跑。
 
-    Saved answers are reused even when the model changes. Use a new output
-    directory to regenerate all answers with a different model.
+    即使更换模型也会复用已保存的答案；如需全部重新生成，请使用新的输出目录。
 
-    Args:
-        input_dir: Directory containing sampled queries/corpus/qrels
-        output_dir: Directory to save answer files
-        max_retries: Maximum retry attempts for failed queries
-        model: OpenAI-compatible model to use for answer generation
+    参数：
+        input_dir: 存放抽样 queries、corpus 和 qrels 的目录。
+        output_dir: 答案文件的输出目录。
+        max_retries: 失败查询的最大重试次数。
+        model: 用于生成答案的 OpenAI 兼容模型。
     """
     print("\nLoading sampled data...")
     queries = read_parquet(f"{input_dir}/queries.parquet")
     corpus = read_parquet(f"{input_dir}/corpus.parquet")
     qrels = read_parquet(f"{input_dir}/qrels.parquet")
 
-    # Try to load existing answers if any
+    # 尝试加载已有答案，以便断点续跑。
     answers_path = f"{output_dir}/answers.parquet"
     qa_pairs_path = f"{output_dir}/qas.parquet"
 
@@ -279,7 +270,7 @@ def generate_answers(
                 qa_pairs.append({"qid": qid, "aid": aid})
                 answer_id_counter += 1
 
-                # Save progress after each successful answer
+                # 每成功生成一个答案就保存进度。
                 save_to_parquet(pd.DataFrame(answers), answers_path)
                 save_to_parquet(pd.DataFrame(qa_pairs), qa_pairs_path)
                 print(f"Processed qid: {qid}")
@@ -290,7 +281,7 @@ def generate_answers(
                     print(
                         f"\nFailed to process qid {qid} after {max_retries} attempts: {str(e)}"
                     )
-                    # Save failed state
+                    # 保存失败状态。
                     save_to_parquet(pd.DataFrame(answers), answers_path)
                     save_to_parquet(pd.DataFrame(qa_pairs), qa_pairs_path)
                 else:
@@ -303,37 +294,36 @@ def generate_answers(
 
 
 def show_results(input_dir: str, n: int = 5):
-    """
-    Show n random results with question, context and answer
+    """展示 n 条问答结果，包含问题、上下文和答案。
 
-    Args:
-        input_dir: Directory containing the QA data
-        n: Number of results to show (default: 5)
+    参数：
+        input_dir: 问答数据目录。
+        n: 展示数量，默认 5。
     """
     print(f"\nShowing {n} random results:")
 
-    # Load data
+    # 加载数据。
     queries = read_parquet(f"{input_dir}/queries.parquet")
     corpus = read_parquet(f"{input_dir}/corpus.parquet")
     qrels = read_parquet(f"{input_dir}/qrels.parquet")
     qa_pairs = read_parquet(f"{input_dir}/qas.parquet")
     answers = read_parquet(f"{input_dir}/answers.parquet")
 
-    # Create QA system for context lookup
+    # 创建问答系统，用于查找查询上下文。
     qa_system = QAAnsweringSystem(queries, corpus, qrels)
 
-    # Get first n QA pairs
+    # 取前 n 条问答记录。
     for _, row in qa_pairs.sample(n).iterrows():
         qid = row["qid"]
         aid = row["aid"]
 
-        # Get question
+        # 获取问题。
         question = qa_system.qid_to_text[qid]
 
-        # Get context
+        # 获取上下文。
         context = qa_system.get_context_for_qid(qid)
 
-        # Get answer
+        # 获取答案。
         answer = answers[answers["id"] == aid]["text"].values[0]
 
         print("\n" + "=" * 50)
@@ -351,11 +341,11 @@ def _model_argument(value: str) -> str:
 
 
 def main():
-    # Set up command line arguments
+    # 配置命令行参数。
     parser = argparse.ArgumentParser(description="QA Dataset Tool")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # Sample command
+    # 数据抽样子命令。
     sample_parser = subparsers.add_parser("sample", help="Sample dataset")
     sample_parser.add_argument(
         "--queries", type=str, required=True, help="Path to queries parquet file"
@@ -374,7 +364,7 @@ def main():
     )
     sample_parser.set_defaults(func=sample_command)
 
-    # Generate command
+    # 答案生成子命令。
     generate_parser = subparsers.add_parser("generate", help="Generate answers")
     generate_parser.add_argument(
         "--input_dir", type=str, required=True, help="Directory with sampled data"
@@ -397,7 +387,7 @@ def main():
         )
     )
 
-    # Show command
+    # 结果展示子命令。
     show_parser = subparsers.add_parser("show", help="Show QA results")
     show_parser.add_argument(
         "--input_dir", type=str, required=True, help="Directory with QA data"

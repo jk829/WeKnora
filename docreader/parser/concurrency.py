@@ -20,10 +20,9 @@ def _get_limiter(name: str, max_workers: int) -> threading.BoundedSemaphore:
 
 @contextmanager
 def parser_worker_limit(name: str, max_workers: int) -> Iterator[None]:
-    """Limit concurrent access to heavy, process-wide parser operations.
+    """限制进程内高开销解析操作的并发数量。
 
-    Set max_workers <= 0 to disable throttling for deployments that have enough
-    CPU/GPU resources and know the parser backend is safe under concurrency.
+    CPU/GPU 资源充足且确认后端支持安全并发时，可设置 max_workers <= 0 禁用限流。
     """
 
     if max_workers <= 0:

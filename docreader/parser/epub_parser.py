@@ -1,6 +1,6 @@
-"""EPUB parser.
+"""EPUB 解析模块。
 
-Parses EPUB files into markdown text and optional embedded images.
+将 EPUB 文件转换为 Markdown 文本，并按需提取内嵌图片。
 """
 
 import base64
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class EPUBParser(BaseParser):
-    """Parser for EPUB e-book files."""
+    """EPUB 电子书解析器。"""
 
     def __init__(self, *args, extract_images: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
@@ -66,7 +66,7 @@ class EPUBParser(BaseParser):
             return self._parse_epub_fallback(content)
 
     def _parse_epub_fallback(self, content: bytes) -> Document:
-        """Parse EPUB directly as a ZIP when ebooklib cannot read it."""
+        """ebooklib 无法读取时，直接按 ZIP 归档解析 EPUB。"""
         import re
         import zipfile
         from io import BytesIO
@@ -183,12 +183,11 @@ class EPUBParser(BaseParser):
 
     @staticmethod
     def _documents_in_reading_order(book) -> list:
-        """Return the book's documents in spine order.
+        """按 spine 定义的阅读顺序返回书籍文档。
 
-        The spine is the reading order. ``get_items()`` follows the manifest,
-        which can list files in any order: Standard Ebooks puts the title page
-        after the last chapter there. Documents the spine leaves out follow, in
-        manifest order.
+        get_items() 遵循 manifest 顺序，而资源清单不保证阅读顺序；例如
+        Standard Ebooks 可能将标题页列在最后一章之后。spine 未列出的文档
+        追加在后，顺序沿用 manifest。
         """
         documents = [
             item
@@ -266,11 +265,10 @@ class EPUBParser(BaseParser):
 
     @staticmethod
     def _strip_internal_links(soup: BeautifulSoup) -> None:
-        """Unwrap links that don't point to an external resource.
+        """移除非外部资源链接的包装，保留链接文字。
 
-        EPUB internal links (other chapter files, ``#fragment`` anchors, TOC
-        entries) become dead links after extraction. Keep only external links
-        and replace everything else with its text.
+        EPUB 内部章节链接、#fragment 锚点和目录链接在提取后失效，
+        因此只保留外部链接，其余链接替换为对应文本。
         """
         external = ("http://", "https://", "mailto:", "tel:")
         for link in soup.find_all("a"):
@@ -332,6 +330,6 @@ class EPUBParser(BaseParser):
 
     @staticmethod
     def _normalize_epub_path(path: str) -> str:
-        """Normalize a decoded archive path without interpreting it as a URI."""
+        """规范化已解码的归档路径，不将其按 URI 解释。"""
         normalized = posixpath.normpath(path.replace("\\", "/"))
         return "" if normalized == "." else normalized.lstrip("/")

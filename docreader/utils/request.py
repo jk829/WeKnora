@@ -45,9 +45,9 @@ class MillisecondFormatter(logging.Formatter):
 
 
 def init_logging_request_id():
-    """
-    Initialize logging to include request ID in log messages.
-    Add the custom filter to all existing handlers
+    """初始化日志，将请求 ID 加入日志消息。
+
+    为所有已有日志处理器添加自定义过滤器。
     """
     logger.info("Initializing request ID logging")
     root_logger = logging.getLogger()
@@ -82,7 +82,7 @@ def init_logging_request_id():
 
 
 class RequestIdFilter(logging.Filter):
-    """Filter that adds request ID to log messages"""
+    """为日志记录添加请求 ID 的过滤器。"""
 
     def filter(self, record: LogRecord) -> bool:
         request_id = request_id_var.get()
@@ -129,10 +129,10 @@ def request_id_context(request_id: str = None):
             # 在这个代码块中的所有日志都会包含请求ID req-123
             logging.info("Processing request")
     """
-    # Generate or use provided request ID
+    # 使用传入的请求 ID，未提供时生成新 ID。
     req_id = request_id or str(uuid.uuid4())
 
-    # Set start time and request ID
+    # 设置请求开始时间及请求 ID。
     start_time = time.time()
     req_token = request_id_var.set(req_id)
     time_token = _request_start_time_ctx.set(start_time)
@@ -142,7 +142,7 @@ def request_id_context(request_id: str = None):
     try:
         yield request_id_var.get()
     finally:
-        # Log completion and reset context vars
+        # 记录请求完成时间，并恢复上下文变量。
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.info(f"Request {req_id} completed in {elapsed_ms}ms")
         request_id_var.reset(req_token)

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Reproducibly merge pinned model metadata and reviewed protocol overrides.
+"""以可复现方式合并固定版本的模型元数据和已审核的协议覆盖配置。
 
-Network updates are intentionally separate: model_catalog_diff.py compares
-models.dev with the generated catalog, then maintainers review changes to the
-pinned source. Upstream metadata cannot silently replace wire compatibility.
+网络更新单独处理：model_catalog_diff.py 比较 models.dev 与生成目录，
+维护者审核后更新固定来源，避免上游元数据静默改变通信协议兼容性。
 """
 import argparse
 import copy
@@ -58,8 +57,8 @@ def generate():
             if key in seen:
                 raise ValueError(f"duplicate override {provider}/{key}")
             seen.add(key)
-            # Unknown entries are explicit additions, suitable for models that
-            # have no upstream metadata yet. Existing entries patch field-wise.
+            # 未知条目视为显式新增，适用于上游尚未提供
+            # 元数据的模型；已有条目则逐字段更新。
             if key not in index:
                 entries.append(copy.deepcopy(patch))
                 index[key] = entries[-1]

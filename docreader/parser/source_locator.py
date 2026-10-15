@@ -1,11 +1,9 @@
-"""Source locators: map ranges of parsed markdown back to the original file.
+"""来源定位：将解析后的 Markdown 范围映射回原始文件。
 
-A source block is ``{"start": int, "end": int, "locator": {...}}`` where
-``start``/``end`` are code point offsets into the document content (end
-exclusive) and the locator says where that text sits in the original file.
-For PDFs the locator is ``{"type": "pdf", "page": n}`` plus an optional
-``"bbox": [x0, y0, x1, y1]`` given as fractions of the displayed page with
-the origin at its top-left corner, so viewers can draw it at any zoom.
+来源块格式为 {"start": int, "end": int, "locator": {...}}；
+start/end 是正文中的 Unicode 码点偏移，end 不包含在范围内。
+PDF 定位信息为 {"type": "pdf", "page": n}，可选 bbox: [x0, y0, x1, y1]，
+坐标以页面左上角为原点、按显示页面尺寸归一化，便于任意缩放下绘制。
 """
 
 from __future__ import annotations
@@ -38,17 +36,16 @@ _SENTENCE_END = tuple("。．.!?！？：:；;」』”)）")
 
 
 def _fold(ch: str) -> str:
-    """Letters and digits only, lower-cased, full-width folded."""
+    """仅保留字母和数字，转为小写并折叠全角字符。"""
     if not ch.isalnum():
         return ""
     return unicodedata.normalize("NFKC", ch).lower()
 
 
 def normalize_with_positions(text: str) -> Tuple[str, List[int]]:
-    """Project text onto letters and digits.
+    """将文本投影为仅含字母和数字的字符串。
 
-    Returns the projection and, for each of its characters, the offset in
-    ``text`` of the character it came from.
+    返回投影结果，以及其中每个字符在原 text 中的偏移。
     """
     out: List[str] = []
     pos: List[int] = []
@@ -84,7 +81,7 @@ def _key_weight(key: str) -> int:
 
 
 def _column_cursor(boxes, idx: int, ends: List[Optional[int]]) -> Optional[int]:
-    """End of the nearest placed line above ``boxes[idx]`` in the same column."""
+    """返回 boxes[idx] 同一栏上方最近已定位文本行的结束偏移。"""
     x0, y0, x1, _ = boxes[idx]
     for j in range(idx - 1, max(-1, idx - 80), -1):
         if ends[j] is None:
@@ -117,15 +114,12 @@ def locate_lines(
     line_texts: Sequence[str],
     boxes: Optional[Sequence[Tuple[float, float, float, float]]] = None,
 ) -> List[Optional[int]]:
-    """Find where each visual line starts in the page text.
+    """查找各视觉行在页面文本中的起始偏移。
 
-    Lines are searched in order after the previous hit so repeated phrases
-    resolve to the right occurrence. With ``boxes`` (PDF points, bottom-left
-    origin) the search first continues from the line above in the same
-    column, since glyph lines of side-by-side columns arrive interleaved. A
-    line not found after either cursor is searched from the start of the page,
-    which tolerates text extractors that order columns differently from the
-    glyph grouping. Returns one offset (or None) per line.
+    依次从上次命中之后搜索，确保重复短语匹配到正确位置。提供 boxes
+    （PDF 点坐标、左下角原点）时，优先从同栏上一行继续，因为左右栏的字形行
+    可能交错到达。两种游标均未命中时从页首搜索，以容忍文本提取器与字形分组
+    采用不同的分栏顺序。每行返回一个偏移，未找到时为 None。
     """
     norm, pos = normalize_with_positions(page_text)
     hits: List[Optional[int]] = []
@@ -170,7 +164,7 @@ def locate_lines(
 
 
 class PageGeometry:
-    """Converts PDF user-space points to fractions of the displayed page."""
+    """将 PDF 用户空间点坐标转换为显示页面的归一化坐标。"""
 
     def __init__(self, cropbox: Tuple[float, float, float, float], rotation: int = 0):
         left, bottom, right, top = cropbox
@@ -222,7 +216,7 @@ def _union(boxes: Iterable[Tuple[float, float, float, float]]):
 
 
 def _line_gap(prev: dict, cur: dict) -> Optional[float]:
-    """Vertical gap from ``prev`` down to ``cur`` when they share a column."""
+    """计算同栏内从 prev 向下到 cur 的垂直间距。"""
     px0, py0, px1, _ = prev["bbox"]
     cx0, _, cx1, cy1 = cur["bbox"]
     if cx1 < px0 or cx0 > px1 or cy1 > py0:
@@ -233,11 +227,10 @@ def _line_gap(prev: dict, cur: dict) -> Optional[float]:
 def _starts_paragraph(
     prev: dict, cur: dict, line_h: float, usual_gap: float, col_right: float
 ) -> bool:
-    """Whether ``cur`` opens a new visual paragraph after ``prev``.
+    """判断 cur 是否在 prev 之后开启新的视觉段落。
 
-    Boxes are PDF points with a bottom-left origin, so reading downwards means
-    decreasing y. ``usual_gap`` is the page's typical gap between consecutive
-    lines of a paragraph, which absorbs double-spaced layouts.
+    边界框使用左下角原点的 PDF 点坐标，向下阅读时 y 递减。
+    usual_gap 为页面段内相邻行的典型间距，可适应双倍行距布局。
     """
     px0, py0, px1, _ = prev["bbox"]
     cx0, _, cx1, cy1 = cur["bbox"]
@@ -261,13 +254,11 @@ def page_blocks(
     lines: Sequence[dict],
     geometry: Optional[PageGeometry],
 ) -> List[dict]:
-    """Source blocks for one text page placed at ``offset`` in the document.
+    """生成正文中位于 offset 的单个文本页来源块。
 
-    ``lines`` are visual lines ``{"text", "bbox"}`` (bbox in PDF points). Lines
-    are placed in ``page_text``, grouped into paragraphs by geometry, and each
-    paragraph becomes a block spanning only its matched lines, boxed by their
-    union. Unmatched gaps keep page-only provenance and never inherit the
-    previous paragraph's geometry.
+    lines 为包含 text、bbox 的视觉行，bbox 使用 PDF 点坐标。
+    先在 page_text 中定位文本行，再根据几何关系分段。每段仅覆盖已匹配的行，
+    边界框取这些行的并集。未匹配间隙仅保留页码来源，不继承前一段的几何信息。
     """
     end = offset + len(page_text)
     page_only = {"type": "pdf", "page": page_number, "mapping": "exact"}

@@ -1,14 +1,7 @@
-"""
-Markdown Parser Module
+"""Markdown 解析模块。
 
-This module provides comprehensive Markdown parsing functionality including:
-- Table formatting and standardization
-- Base64 image extraction and conversion
-- Image path replacement and URL generation
-- Pipeline-based parsing with multiple stages
-
-The parser uses a pipeline approach to process Markdown content through
-multiple stages: table formatting -> image processing.
+提供表格格式规范化、Base64 图片提取与转换、图片路径替换等功能。
+采用流水线依次处理表格和图片。
 """
 
 import base64
@@ -35,11 +28,11 @@ _ALIGNMENT_CELL = re.compile(r"^[:-]+$")
 class MarkdownTableUtil:
     """Utility class for formatting Markdown tables.
 
-    This class standardizes Markdown table formatting by:
-    - Normalizing column alignment markers (e.g., :---, :---:, ---:)
-    - Adding consistent spacing around pipes (|)
-    - Preserving indentation levels
-    - Handling both header rows and data rows
+    此类通过以下方式标准化 Markdown 表格格式：
+    -标准化列对齐标记（例如：---、:---:、---:）
+    -在管道周围添加一致的间距 (|)
+    -保留缩进级别
+    -处理标题行和数据行
 
     Example:
         Input:  |姓名|年龄|城市|
@@ -53,7 +46,7 @@ class MarkdownTableUtil:
 
     @staticmethod
     def _split_row_cells(row_line: str) -> List[str]:
-        """Split a markdown table row into cells, preserving empty cells."""
+        """将 Markdown 表格行拆成单元格，并保留空单元格。"""
         inner = row_line.strip()
         if not inner.startswith("|"):
             return []
@@ -76,11 +69,10 @@ class MarkdownTableUtil:
 
     @classmethod
     def _is_alignment_row(cls, line: str) -> bool:
-        """Detect a GFM alignment row, matching the previous ``align_pattern``.
+        """检测 GFM 对齐行，与原有 align_pattern 规则一致。
 
-        Deliberately looser than :meth:`_is_separator_row` (which needs three
-        or more dashes per cell) so formatting output is unchanged for rows
-        like ``| - | - |``.
+        规则刻意比 _is_separator_row 宽松，后者要求每格至少三个连字符；
+        这样可以保持 | - | - | 等输入的格式化结果不变。
         """
         cells = cls._split_row_cells(line)
         return bool(cells) and all(_ALIGNMENT_CELL.match(cell) for cell in cells)
@@ -97,7 +89,7 @@ class MarkdownTableUtil:
 
     @classmethod
     def _normalize_table_block(cls, block: List[str]) -> List[str]:
-        """Fix MarkItDown-style tables: drop bogus prefix rows, ensure GFM delimiter."""
+        """修复 MarkItDown 风格表格：移除伪前缀行，并补齐 GFM 分隔行。"""
         while block and cls._is_empty_row(block[0]):
             block.pop(0)
         if block and cls._is_separator_row(block[0]):
@@ -110,7 +102,7 @@ class MarkdownTableUtil:
         return block
 
     def normalize_spurious_table_prefixes(self, content: str) -> str:
-        """Remove bogus empty/separator prefix rows from MarkItDown table output."""
+        """移除 MarkItDown 表格开头多余的空行或分隔行。"""
         lines = content.split("\n")
         out: List[str] = []
         i = 0
@@ -128,23 +120,21 @@ class MarkdownTableUtil:
         return "\n".join(out)
 
     def format_table(self, content: str) -> str:
-        """Format all Markdown tables in the content.
+        """格式化正文中的全部 Markdown 表格。
 
-        Line-based and regex-free: only well-formed rows (leading *and*
-        trailing ``|``, with at least one cell) are treated as tables, so a
-        malformed row can never trigger the catastrophic backtracking
-        described in https://github.com/Tencent/WeKnora/issues/2768.
-        CRLF/CR input is normalized to LF before scanning.
+        逐行处理且不使用正则；只有首尾均为 | 且至少有一个单元格的行才视为表格，
+        避免畸形输入引发问题 #2768 中的灾难性回溯。扫描前将 CRLF/CR 规范化为 LF。
+        参见 https://github.com/Tencent/WeKnora/issues/2768。
 
-        Args:
-            content: Raw Markdown text containing tables
+        参数：
+            content: 包含表格的原始 Markdown 文本。
 
-        Returns:
-            Formatted Markdown text with standardized table formatting
+        返回：
+            表格格式规范化后的 Markdown 文本。
         """
 
         def format_alignment_row(prefix: str, columns: List[str]) -> str:
-            """Standardize an alignment row, preserving ``:`` markers."""
+            """规范化对齐行，并保留冒号对齐标记。"""
             processed = []
             for col in columns:
                 # Preserve left alignment marker (:---)
@@ -155,7 +145,7 @@ class MarkdownTableUtil:
             return prefix + "| " + " | ".join(processed) + " |"
 
         def format_data_row(prefix: str, columns: List[str]) -> str:
-            """Standardize a header or data row."""
+            """规范化表头行或数据行。"""
             return prefix + "| " + " | ".join(columns) + " |"
 
         # Unify CRLF/CR first so a trailing ``\r`` left by split("\n") cannot
@@ -209,12 +199,11 @@ class MarkdownTableUtil:
 
 
 class MarkdownTableFormatter(BaseParser):
-    """Parser for formatting Markdown tables.
+    """Markdown 表格格式化解析器。
 
-    This parser standardizes the formatting of all Markdown tables in the
-    document to ensure consistent spacing and alignment markers.
+    统一文档中表格的空格和对齐标记。
 
-    Example:
+    示例：
         >>> formatter = MarkdownTableFormatter()
         >>> content = b"|Name|Age|\n|---|---|\n|John|30|"
         >>> doc = formatter.parse_into_text(content)
@@ -229,13 +218,13 @@ class MarkdownTableFormatter(BaseParser):
         self.table_helper = MarkdownTableUtil()
 
     def parse_into_text(self, content: bytes) -> Document:
-        """Parse and format Markdown tables.
+        """解析并格式化 Markdown 表格。
 
-        Args:
-            content: Raw Markdown content as bytes
+        参数：
+            content: 原始 Markdown 字节内容。
 
-        Returns:
-            Document with formatted table content
+        返回：
+            包含格式化表格正文的 Document。
         """
         # Decode bytes to string with automatic encoding detection
         text = endecode.decode_bytes(content)
@@ -245,17 +234,11 @@ class MarkdownTableFormatter(BaseParser):
 
 
 class MarkdownImageUtil:
-    """Utility class for handling images in Markdown.
+    """Markdown 图片处理工具。
 
-    This class provides functionality to:
-    - Extract base64-encoded images from Markdown
-    - Extract image paths from Markdown
-    - Replace image paths with new URLs
-    - Convert base64 images to binary format
-
-    Supported formats:
-    - Base64 embedded images: ![alt](data:image/png;base64,iVBORw0...)
-    - Regular image links: ![alt](path/to/image.png)
+    支持提取 Base64 内嵌图片和普通图片路径、将图片路径替换为新 URL，
+    以及将 Base64 图片解码为二进制。
+    支持格式：![alt](data:image/png;base64,iVBORw0...) 和 ![alt](path/to/image.png)。
     """
 
     def __init__(self):
@@ -277,17 +260,17 @@ class MarkdownImageUtil:
         path_prefix: Optional[str] = None,
         replace: bool = True,
     ) -> Tuple[str, List[str]]:
-        """Extract image paths from Markdown content.
+        """从 Markdown 正文中提取图片路径。
 
-        Args:
-            content: Markdown text containing images
-            path_prefix: Optional prefix to add to image paths
-            replace: Whether to replace image syntax in content
+        参数：
+            content: 包含图片的 Markdown 文本。
+            path_prefix: 可选的图片路径前缀。
+            replace: 是否替换正文中的图片语法。
 
-        Returns:
-            Tuple of (processed_text, list_of_image_paths)
+        返回：
+            (处理后的文本, 图片路径列表)。
 
-        Example:
+        示例：
             >>> util = MarkdownImageUtil()
             >>> text, images = util.extract_image("![logo](img/logo.png)")
             >>> print(images)
@@ -297,7 +280,7 @@ class MarkdownImageUtil:
         images: List[str] = []
 
         def repl(match: Match[str]) -> str:
-            """Replacement function for each image match."""
+            """处理每个图片匹配项的替换函数。"""
             title = match.group(1)  # Alt text
             image_path = match.group(2)  # Image path
 
@@ -324,21 +307,19 @@ class MarkdownImageUtil:
         path_prefix: Optional[str] = None,
         replace: bool = True,
     ) -> Tuple[str, Dict[str, bytes]]:
-        """Extract and decode base64 embedded images from Markdown.
+        """提取并解码 Markdown 中的 Base64 内嵌图片。
 
-        This method finds all base64-encoded images in the Markdown content,
-        decodes them to binary format, generates unique filenames, and
-        optionally replaces them with file path references.
+        为图片生成唯一文件名，可按需将正文中的内嵌数据替换为文件路径引用。
 
-        Args:
-            content: Markdown text containing base64 images
-            path_prefix: Optional directory prefix for generated paths
-            replace: Whether to replace base64 syntax with file paths
+        参数：
+            content: 包含 Base64 图片的 Markdown 文本。
+            path_prefix: 生成路径的可选目录前缀。
+            replace: 是否将 Base64 图片语法替换为文件路径。
 
-        Returns:
-            Tuple of (processed_text, dict_of_path_to_bytes)
+        返回：
+            (处理后的文本, 路径到图片字节的字典)。
 
-        Example:
+        示例：
             >>> util = MarkdownImageUtil()
             >>> text = "![logo](data:image/png;base64,iVBORw0KGg...)"
             >>> new_text, images = util.extract_base64(text, "images")
@@ -351,7 +332,7 @@ class MarkdownImageUtil:
         images: Dict[str, bytes] = {}
 
         def repl(match: Match[str]) -> str:
-            """Replacement function for each base64 image match."""
+            """处理每个 Base64 图片匹配项的替换函数。"""
             title = match.group(1)  # Alt text
             img_ext = match.group(2)  # Image format (png, jpg, etc.)
             img_b64 = match.group(3)  # Base64 encoded data
@@ -380,19 +361,16 @@ class MarkdownImageUtil:
         return text, images
 
     def replace_path(self, content: str, images: Dict[str, str]) -> str:
-        """Replace image paths in Markdown with new URLs.
+        """将 Markdown 中的图片路径替换为新 URL，常用于图片存储后的链接更新。
 
-        This method is typically used to replace local file paths with
-        uploaded URLs after images have been stored.
+        参数：
+            content: 包含图片引用的 Markdown 文本。
+            images: 旧路径到新 URL 的映射。
 
-        Args:
-            content: Markdown text with image references
-            images: Mapping of old paths to new URLs
+        返回：
+            更新图片 URL 后的 Markdown。
 
-        Returns:
-            Markdown text with updated image URLs
-
-        Example:
+        示例：
             >>> util = MarkdownImageUtil()
             >>> content = "![logo](temp/img.png)"
             >>> mapping = {"temp/img.png": "https://cdn.com/img.png"}
@@ -404,7 +382,7 @@ class MarkdownImageUtil:
         content_replace: set = set()
 
         def repl(match: Match[str]) -> str:
-            """Replacement function for each image match."""
+            """处理每个图片匹配项的替换函数。"""
             title = match.group(1)  # Alt text
             image_path = match.group(2)  # Current image path
 
@@ -434,11 +412,10 @@ class MarkdownImageUtil:
 
 
 class MarkdownImageBase64(BaseParser):
-    """Parser for extracting base64 images from Markdown.
+    """从 Markdown 中提取 Base64 图片的解析器。
 
-    Extracts base64-encoded images, replaces them with path references,
-    and returns the raw image data in Document.images for the Go-side
-    ImageResolver (or main.py _resolve_images) to handle storage.
+    将内嵌图片替换为路径引用，原始数据放入 Document.images，
+    由 Go 端 ImageResolver 或 main.py 的 _resolve_images 处理存储。
     """
 
     def __init__(self, **kwargs):
@@ -458,14 +435,10 @@ class MarkdownImageBase64(BaseParser):
 
 
 class MarkdownParser(PipelineParser):
-    """Complete Markdown parser using pipeline approach.
+    """采用流水线处理的完整 Markdown 解析器。
 
-    This parser processes Markdown content through multiple stages:
-    1. MarkdownTableFormatter: Standardizes table formatting
-    2. MarkdownImageBase64: Extracts and uploads base64 images
-
-    The pipeline ensures that content flows through each parser in sequence,
-    with each stage's output becoming the next stage's input.
+    依次使用 MarkdownTableFormatter 规范化表格，
+    再使用 MarkdownImageBase64 提取内嵌图片。每个阶段的输出作为下一阶段的输入。
     """
 
     _parser_cls = (MarkdownTableFormatter, MarkdownImageBase64)
